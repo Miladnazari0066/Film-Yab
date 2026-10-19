@@ -248,14 +248,13 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-// دریافت پوستر و امتیاز از OMDb (با جستجوی هوشمند)
+// دریافت پوستر و امتیاز از OMDb
 async function fetchOMDbData(imdbID, titleEn, year) {
     if (!OMDB_API_KEY) return { poster: null, rating: null };
     
     try {
         let url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&plot=short`;
         
-        // اگر آیدی IMDb معتبر بود، با آیدی سرچ کن. وگرنه با اسم انگلیسی و سال
         if (imdbID && imdbID.startsWith('tt')) {
             url += `&i=${imdbID}`;
         } else {
@@ -283,28 +282,29 @@ async function showResult(data) {
     if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
     resultBox.style.display = 'block';
     
-    // ✅ فیلتر اصلاح اسم و درصد
+    // ✅ فیلتر اصلاح اسم
     let rawTitleFa = data.title_fa || 'نامشخص';
     rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد')
                            .replace(/برکینگ باد/gi, 'بریکینگ بد')
-                           .replace(/بریکینگ باد/gi, 'بریکینگ بد') // این خط اضافه شد
+                           .replace(/بریکینگ باد/gi, 'بریکینگ بد')
                            .replace(/گیم آف ترونز/gi, 'بازی تاج و تخت');
 
-    // اصلاح مشکل تکرار درصد (حذف % از خروجی هوش مصنوعی)
+    // حذف درصد تکراری
     let rawConfidence = String(data.confidence || '0').replace(/[%٪]/g, '').trim();
 
     const titleFa = escapeHtml(rawTitleFa);
     const titleEn = escapeHtml(data.title_en || 'Unknown');
-    const year = escapeHtml(data.year || '');
+    
+    // 👇 این خط برای اصلاح جهت سال (RTL) است 👇
+    const year = `<span dir="ltr" style="display: inline-block;">${escapeHtml(data.year || '---')}</span>`;
+    
     const type = escapeHtml(data.type || 'نامشخص');
     const confidence = escapeHtml(rawConfidence);
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
-    // دریافت اطلاعات OMDb
     const omdbData = await fetchOMDbData(imdbID, data.title_en, data.year);
     
-    // پوستر
     let posterHtml = '';
     if (omdbData.poster) {
         posterHtml = `<img src="${omdbData.poster}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
@@ -312,20 +312,17 @@ async function showResult(data) {
         posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
     }
 
-    // امتیاز IMDb
     let imdbRatingHtml = '';
     if (omdbData.rating) {
         imdbRatingHtml = `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold; border: none;">⭐ IMDb: ${omdbData.rating}/10</span>`;
     }
 
-    // لینک‌ها
     const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
-    const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + year + ' movie')}`;
+    const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + data.year + ' movie')}`;
     
     const isEnglish = /^[A-Za-z\s.,!?'-]+$/.test(explanation);
     const descDir = isEnglish ? 'ltr' : 'rtl';
 
-    // احتمالات دیگر
     let altHtml = '';
     if (data.alternatives && data.alternatives.length > 0) {
         altHtml = `<div class="alternatives">
@@ -334,7 +331,6 @@ async function showResult(data) {
         </div>`;
     }
 
-    // قالب HTML
     resultBox.innerHTML = `
         <div class="result-card">
             ${posterHtml}
