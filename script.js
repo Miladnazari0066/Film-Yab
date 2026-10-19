@@ -1,378 +1,329 @@
-/* ============================================================
-   فیلم‌یاب — Movie Finder powered by OpenRouter
-   کلید از config.js خوانده می‌شود و با هدر Authorization: Bearer
-   ارسال می‌شود. ویدیو به ۶ فریم عکس تبدیل و ارسال می‌شود.
-   ============================================================ */
+const cfg = window.APP_CONFIG || { OPENROUTER_API_KEY: '', MODELS: ['openrouter/free'] };
+const API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const FRAME_COUNT = 6;
+const FRAME_WIDTH = 512;
 
-/* ---------- Config ---------- */
-const cfg = {
-  key: (window.APP_CONFIG && window.APP_CONFIG.OPENROUTER_API_KEY) || '',
-  models: (window.APP_CONFIG && window.APP_CONFIG.MODELS) || ['openrouter/free'],
-};
+// 🔴 کلید API رایگان OMDb رو اینجا بذار (از سایت omdbapi.com بگیر)
+const OMDB_API_KEY = 'YOUR_OMDB_API_KEY'; 
 
-const API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const FRAME_COUNT = 6;   // تعداد فریم‌هایی که از ویدیو گرفته می‌شود
-const FRAME_WIDTH = 512; // حداکثر عرض هر فریم
-
-/* ---------- DOM ---------- */
 const $ = id => document.getElementById(id);
-const tabText = $('tabText'), tabVideo = $('tabVideo');
-const panelText = $('panelText'), panelVideo = $('panelVideo');
-const storyInput = $('storyInput'), yearHint = $('yearHint'), countryHint = $('countryHint');
-const dropzone = $('dropzone'), videoInput = $('videoInput');
-const dzIdle = $('dropzoneIdle'), dzPreview = $('dropzonePreview');
-const videoPreview = $('videoPreview'), dzFileName = $('dzFileName'), dzFileSize = $('dzFileSize'), dzRemove = $('dzRemove');
-const captionInput = $('captionInput');
-const uploadProgress = $('uploadProgress'), progressFill = $('progressFill'), progressText = $('progressText');
-const textSearchBtn = $('textSearchBtn'), videoSearchBtn = $('videoSearchBtn');
-const resultArea = $('resultArea'), loader = $('loader'), loaderText = $('loaderText'), loaderSteps = $('loaderSteps');
-const resultCard = $('resultCard'), errorCard = $('errorCard');
+// ... (بقیه متغیرهای DOM مثل قبل بمونن) ...
+const tabs = document.querySelectorAll('.tab');
+const panels = { text: $('panel-text'), video: $('panel-video') };
+const storyInput = $('story');
+const yearInput = $('year');
+const countryInput = $('country');
+const dropzone = $('dropzone');
+const fileInput = $('file-input');
+const videoInfo = $('video-info');
+const videoPreview = $('video-preview');
+const captionInput = $('caption');
+const btnText = $('btn-text');
+const btnVideo = $('btn-video');
+const loader = $('loader');
+const loaderText = $('loader-text');
+const resultBox = $('result');
 
-let videoFile = null;
-
-/* ---------- Tabs ---------- */
 function switchTab(which) {
-  const isText = which === 'text';
-  tabText.classList.toggle('active', isText);
-  tabVideo.classList.toggle('active', !isText);
-  tabText.setAttribute('aria-selected', isText);
-  tabVideo.setAttribute('aria-selected', !isText);
-  panelText.classList.toggle('active', isText);
-  panelVideo.classList.toggle('active', !isText);
+  tabs.forEach(t => {
+    const active = t.dataset.tab === which;
+    t.classList.toggle('active', active);
+    t.setAttribute('aria-selected', active);
+  });
+  Object.entries(panels).forEach(([k, p]) => p.classList.toggle('active', k === which));
 }
-tabText.addEventListener('click', () => switchTab('text'));
-tabVideo.addEventListener('click', () => switchTab('video'));
 
-/* ---------- Video dropzone ---------- */
-dropzone.addEventListener('click', e => {
-  if (e.target === dzRemove) return;
-  if (!videoFile) videoInput.click();
-});
-videoInput.addEventListener('change', () => videoInput.files[0] && setVideoFile(videoInput.files[0]));
+tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+let selectedFile = null;
+
+dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
 dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
 dropzone.addEventListener('drop', e => {
-  e.preventDefault(); dropzone.classList.remove('dragover');
-  const f = e.dataTransfer.files[0];
-  if (f && f.type.startsWith('video/')) setVideoFile(f);
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('video/')) setVideoFile(file);
+  else alert('لطفاً یک فایل ویدیویی معتبر انتخاب کنید.');
 });
-dzRemove.addEventListener('click', e => {
-  e.stopPropagation();
-  clearVideoFile();
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) setVideoFile(file);
 });
 
 function fmtSize(bytes) {
-  if (bytes > 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1) + ' گیگابایت';
-  return Math.round(bytes / 1024 / 1024) + ' مگابایت';
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1 ? mb.toFixed(1) + ' مگابایت' : (bytes / 1024).toFixed(0) + ' کیلوبایت';
 }
 
-function setVideoFile(f) {
-  clearVideoFile();
-  videoFile = f;
-  videoPreview.src = URL.createObjectURL(f);
-  dzFileName.textContent = f.name;
-  dzFileSize.textContent = fmtSize(f.size);
-  dzIdle.hidden = true;
-  dzPreview.hidden = false;
-  dropzone.classList.add('has-file');
-  videoSearchBtn.disabled = false;
+function setVideoFile(file) {
+  selectedFile = file;
+  videoPreview.src = URL.createObjectURL(file);
+  dropzone.style.display = 'none';
+  videoInfo.style.display = 'block';
+  videoInfo.querySelector('.filename').textContent = file.name;
+  videoInfo.querySelector('.filesize').textContent = fmtSize(file.size);
 }
 
-function clearVideoFile() {
-  videoFile = null;
-  videoPreview.removeAttribute('src');
-  videoInput.value = '';
-  dzIdle.hidden = false;
-  dzPreview.hidden = true;
-  dropzone.classList.remove('has-file');
-  videoSearchBtn.disabled = true;
-  hideProgress();
-}
+async function extractFrames(file, count = FRAME_COUNT) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.src = URL.createObjectURL(file);
 
-function showProgress(pct, label) {
-  uploadProgress.hidden = false;
-  progressFill.style.width = pct + '%';
-  progressText.textContent = label;
-}
-function hideProgress() { uploadProgress.hidden = true; }
-
-/* ---------- Frame extraction (video → images) ---------- */
-function extractFrames(file, count) {
-  return new Promise(resolve => {
-    const url = URL.createObjectURL(file);
-    const v = document.createElement('video');
-    v.muted = true;
-    v.playsInline = true;
-    v.preload = 'auto';
-    v.src = url;
-
-    const finish = frames => { URL.revokeObjectURL(url); resolve(frames); };
-
-    v.onerror = () => finish([]);
-
-    v.onloadedmetadata = () => {
-      const dur = v.duration || 0;
-      if (!dur || !isFinite(dur)) return finish([]);
+    video.onloadedmetadata = async () => {
+      const dur = video.duration;
+      if (!isFinite(dur) || dur <= 0) return reject(new Error('مدت ویدیو نامعتبر است.'));
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      const times = [];
-      for (let i = 1; i <= count; i++) {
-        times.push(Math.min(dur * i / (count + 1), Math.max(0, dur - 0.1)));
-      }
-      let idx = 0;
       const frames = [];
+      
+      video.width = video.videoWidth;
+      video.height = video.videoHeight;
+      const scale = Math.min(1, FRAME_WIDTH / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
 
-      const grabNext = () => {
-        if (idx >= times.length) return finish(frames);
-        try { v.currentTime = times[idx]; } catch (_) { idx++; grabNext(); }
-      };
-
-      v.onseeked = () => {
-        const w = v.videoWidth || 640, h = v.videoHeight || 360;
-        const scale = Math.min(1, FRAME_WIDTH / w);
-        canvas.width = Math.round(w * scale);
-        canvas.height = Math.round(h * scale);
-        try { ctx.drawImage(v, 0, 0, canvas.width, canvas.height); } catch (_) {}
+      for (let i = 0; i < count; i++) {
+        const t = dur * (i + 0.5) / count;
+        video.currentTime = t;
+        await new Promise(r => video.onseeked = r);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         frames.push(canvas.toDataURL('image/jpeg', 0.7));
-        idx++;
-        showProgress(Math.round(idx / count * 100), `استخراج فریم ${fa(idx)} از ${fa(count)}...`);
-        grabNext();
-      };
-
-      grabNext();
+      }
+      resolve(frames);
     };
+    video.onerror = () => reject(new Error('خطا در خواندن فایل ویدیویی.'));
   });
 }
 
-/* ---------- Prompt ---------- */
-function buildPrompt(userStory, year, country, sourceLabel) {
-  return `تو یک کارشناس حرفه‌ای سینما و سریال هستی («فیلم‌یاب»). یک کاربر ایرانی بخشی از یک ${sourceLabel} را به تو گفته و می‌خواهد بداند آن فیلم یا سریال چه بوده است.
+function buildPrompt(text, year, country, isVideo) {
+  return `تو یک کارشناس و دایرةالمعارف سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
+اطلاعات کاربر:
+متن: "${text}"
+سال (اختیاری): ${year || 'نامشخص'}
+کشور (اختیاری): ${country || 'نامشخص'}
 
-توصیف کاربر:
-"""
-${userStory}
-"""
-${year ? `نشانه‌ی سال (شاید نادرست باشد): ${year}\n` : ''}${country ? `نشانه‌ی کشور (شاید نادرست باشد): ${country}\n` : ''}
-وظیفه:
-۱. توصیف را با دقت تحلیل کن: ژانر، فضا، جزئیات صحنه، لباس، لهجه، بازیگران احتمالی، دهه‌ی ساخت و هر سرنخ دیگری.
-۲. بر اساس دانش سینمایی خودت، فیلم یا سریال مورد نظر را پیدا کن. هم فیلم‌ها و سریال‌های ایرانی و هم خارجی در نظر بگیر. اسم فیلم ممکن است خیلی معروف یا کاملاً کمتر شناخته‌شده باشد.
-۳. اگر مطمئنی همان فیلم را یافته‌ای، آن را در فیلد «title» بده. اگر مطمئن نیستی، بهترین حدس‌ها را به ترتیب احتمال در «alternatives» بده و «title» را روی محتمل‌ترین حدس بگذار و «confidence» را کم بده.
-۴. در فیلد «scene» توضیح بده چرا این حدس با توصیف کاربر می‌خواند و آن صحنه در فیلم چه جایگاهی دارد.
-۵. اگر توصیف خیلی مبهم است، به‌جای حدس بی‌پایه، در «scene» بگو دقیقاً چه جزئیاتی (نام بازیگر، دیالوگ، رنگ لباس، برنده‌ی جایزه و...) کاربر را یادش می‌آید تا جستجو دقیق‌تر شود.
+وظیفه تو:
+نام دقیق اثر (فارسی و انگلیسی)، سال ساخت، کشور، نوع (فیلم/سریال)، و توضیح اینکه چرا این اثر با توصیف کاربر مطابقت دارد را پیدا کن.
+همچنین اگر توانستی، آیدی IMDb آن را پیدا کن (مثلاً tt0903747).
 
-فقط و فقط JSON معتبر با این ساختار برگردان (بدون هیچ متن اضافه، بدون markdown):
+خروجی را **فقط** به صورت یک آبجکت JSON خالص (بدون هیچ متن اضافه یا بک‌تیک مارک‌داون) برگردان با این ساختار:
 {
-  "found": true یا false,
-  "title": "نام فارسی فیلم یا سریال",
-  "english_title": "عنوان اصلی لاتین (اگر فیلم خارجی است؛ برای فیلم ایرانی رشته‌ی خالی)",
-  "year": "سال ساخت به عدد رشته‌ای",
-  "country": "کشور سازنده",
-  "type": "فیلم سینمایی" یا "سریال",
-  "confidence": عددی بین ۰ تا ۱۰۰,
-  "scene": "توضیح تطبیق این حدس با توصیف کاربر، یا درخواست جزئیات بیشتر",
-  "alternatives": [ {"title": "نام", "year": "سال", "reason": "چرا محتمل است"} ]
+  "title_fa": "نام فارسی",
+  "title_en": "نام انگلیسی",
+  "year": "سال ساخت",
+  "type": "فیلم یا سریال",
+  "imdbID": "شناسه IMDb (اگر پیدا کردی، در غیر این صورت خالی بگذار)",
+  "confidence": "درصد اطمینان بین 0 تا 100 (فقط عدد)",
+  "explanation": "توضیح کامل و جذاب به زبان فارسی که چرا این اثر همان چیزی است که کاربر می‌خواهد.",
+  "alternatives": [
+    { "title_fa": "نام جایگزین ۱", "title_en": "Alternate 1", "reason": "دلیل کوتاه" }
+  ]
 }`;
 }
 
-/* ---------- OpenRouter call (با fallback بین مدل‌ها) ---------- */
-async function callOpenRouter(contentParts) {
-  if (!cfg.key) throw new Error('کلید API در config.js تنظیم نشده است.');
-
-  const body = JSON.stringify({
-    models: cfg.models,
-    messages: [{ role: 'user', content: contentParts }],
-    temperature: 0.4,
-    max_tokens: 1500,
-  });
-
-  let lastMsg = '';
-  for (const model of cfg.models) {
+async function callOpenRouter(content) {
+  for (const model of cfg.MODELS) {
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer ' + cfg.key,
+          'Authorization': `Bearer ${cfg.OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': location.origin,
-          'X-Title': 'Film-Yab',
+          'X-Title': 'Film-Yab'
         },
         body: JSON.stringify({
-          models: cfg.models,
           model: model,
-          messages: [{ role: 'user', content: contentParts }],
-          temperature: 0.4,
-          max_tokens: 1500,
-        }),
+          messages: [{ role: 'user', content: content }],
+          temperature: 0.1
+        })
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-        if (text) return text;
-        lastMsg = 'پاسخ خالی از سرور دریافت شد.';
-        continue;
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('کلید API نامعتبر است.');
+        if (res.status === 429) throw new Error('محدودیت درخواست. کمی بعد تلاش کنید.');
+        continue; // امتحان مدل بعدی
       }
 
-      const errText = await res.text().catch(() => '');
-      if (res.status === 401) throw new Error('کلید OpenRouter نامعتبر است. آن را دوباره از openrouter.ai/keys کپی و در config.js جایگذاری کن.');
-      if (res.status === 402) throw new Error('اعتبار این کلید تمام شده است. مدل‌های رایگان در روز محدودیت دارند — فردا دوباره امتحان کن یا اعتبار اضافه کن.');
-      if (res.status === 429) throw new Error('محدودیت تعداد درخواست (۴۲۹). چند لحظه صبر کن و دوباره امتحان کن.');
-      lastMsg = `خطای سرور (${res.status}): ${errText.slice(0, 200)}`;
-    } catch (e) {
-      if (e.message && (e.message.includes('کلید') || e.message.includes('اعتبار') || e.message.includes('۴۲۹'))) throw e;
-      lastMsg = e.message || 'خطای شبکه';
+      const data = await res.json();
+      if (data.choices && data.choices.length > 0) {
+        return data.choices[0].message.content;
+      }
+    } catch (err) {
+      console.warn(`مدل ${model} خطا داد:`, err);
     }
   }
-  throw new Error(lastMsg || 'هیچ‌کدام از مدل‌ها پاسخ ندادند.');
+  throw new Error('متاسفانه هیچ‌کدام از مدل‌ها پاسخ ندادند. لطفاً دوباره تلاش کنید.');
 }
 
-/* ---------- Searches ---------- */
 async function runTextSearch() {
-  const story = storyInput.value.trim();
-  if (story.length < 10) {
-    showError('توصیف کوتاه است', 'لطفاً کمی دقیق‌تر بنویس: چه دیدی؟ چه شنیدی؟ چه حسی داشت؟ حداقل چند جمله.');
-    return;
+  const text = storyInput.value.trim();
+  if (text.length < 10) {
+    return showError('لطفاً توضیحات بیشتری درباره فیلم بنویسید (حداقل ۱۰ کاراکتر).');
   }
-  const prompt = buildPrompt(story, yearHint.value.trim(), countryHint.value.trim(), 'فیلم یا سریال');
-  showLoader(['تحلیل توصیف شما...', 'مرور ژانر و دهه‌ی ساخت...', 'جستجوی اسم فیلم...']);
+
+  showLoader(true);
+  const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
+  
   try {
-    const text = await callOpenRouter([{ type: 'text', text: prompt }]);
-    const data = parseJson(text);
-    if (!data) throw new Error('پاسخ مدل قابل خواندن نبود. دوباره امتحان کن.');
+    const rawResponse = await callOpenRouter([{ type: "text", text: prompt }]);
+    const data = parseJson(rawResponse);
     showResult(data);
-  } catch (e) {
-    showError('جستجو ناموفق بود', e.message);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    showLoader(false);
   }
 }
 
 async function runVideoSearch() {
-  if (!videoFile) return;
-  showLoader(['خواندن ویدیو...', 'استخراج فریم‌های کلیدی...', 'تحلیل تصاویر...']);
-  const frames = await extractFrames(videoFile, FRAME_COUNT);
-  if (!frames.length) {
-    showError('فریم استخراج نشد', 'از این ویدیو نتوانستم عکس بگیرم. فرمت MP4 یا MOV را امتحان کن یا ویدیوی کوتاه‌تری آپلود کن.');
-    return;
-  }
-  const caption = captionInput.value.trim() || 'کاربر فقط ویدیو آپلود کرده و توضیحی نداده؛ از تصاویر هرچه می‌توانی بفهم.';
-  const prompt = buildPrompt(caption, '', '', 'ویدیوی کوتاه (ریلز). فریم‌های استخراج‌شده از آن پیوست است');
-
-  const parts = [{ type: 'text', text: prompt }];
-  frames.forEach(d => parts.push({ type: 'image_url', image_url: { url: d } }));
-
-  showLoader(['ارسال فریم‌ها به مدل...', 'مقایسه‌ی صحنه‌ها...', 'جستجوی اسم فیلم...']);
+  if (!selectedFile) return showError('لطفاً ابتدا یک ویدیو انتخاب کنید.');
+  
+  showLoader(true);
+  loaderText.textContent = 'در حال استخراج فریم‌ها از ویدیو...';
+  
   try {
-    const text = await callOpenRouter(parts);
-    const data = parseJson(text);
-    if (!data) throw new Error('پاسخ مدل قابل خواندن نبود. دوباره امتحان کن.');
+    const frames = await extractFrames(selectedFile);
+    const caption = captionInput.value.trim() || 'این ویدیو را تحلیل کن و فیلم یا سریال مربوطه را پیدا کن.';
+    const prompt = buildPrompt(caption, '', '', true);
+    
+    const content = [{ type: "text", text: prompt }];
+    frames.forEach(frame => {
+      content.push({ type: "image_url", image_url: { url: frame } });
+    });
+
+    loaderText.textContent = 'در حال جستجو در حافظه سینما...';
+    const rawResponse = await callOpenRouter(content);
+    const data = parseJson(rawResponse);
     showResult(data);
-  } catch (e) {
-    showError('جستجو ناموفق بود', e.message);
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    showLoader(false);
   }
 }
 
-textSearchBtn.addEventListener('click', runTextSearch);
-videoSearchBtn.addEventListener('click', () => {
-  videoSearchBtn.disabled = true;
-  runVideoSearch().finally(() => { videoSearchBtn.disabled = !videoFile; });
-});
-
-/* ---------- Result rendering ---------- */
-function showLoader(steps) {
-  resultArea.hidden = false;
-  errorCard.hidden = true;
-  resultCard.hidden = true;
-  loader.hidden = false;
-  loaderText.textContent = 'در حال جستجو در حافظه‌ی سینما...';
-  loaderSteps.innerHTML = '';
-  steps.forEach((s, i) => {
-    const el = document.createElement('span');
-    el.textContent = s;
-    el.style.animationDelay = (i * 1.6) + 's';
-    loaderSteps.appendChild(el);
-  });
-  resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function showLoader(show) {
+  loader.style.display = show ? 'flex' : 'none';
+  resultBox.style.display = 'none';
+  if (show) {
+    const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل داستان...', 'جستجو در آرشیو سینما...'];
+    let i = 0;
+    loaderText.textContent = msgs[0];
+    const int = setInterval(() => {
+      i = (i + 1) % msgs.length;
+      loaderText.textContent = msgs[i];
+    }, 2500);
+    loader.dataset.interval = int;
+  } else {
+    clearInterval(loader.dataset.interval);
+  }
 }
 
-function rotateLoaderText() {
-  const msgs = [
-    'در حال جستجو در حافظه‌ی سینما...',
-    'داره صحنه‌ها رو مقایسه می‌کنه...',
-    'یه لحظه، دارم اسم فیلم رو یادم میاد...',
-    'نزدیک شدیم! دارم جزئیات رو چک می‌کنم...',
-  ];
-  let i = 0;
-  const t = setInterval(() => {
-    if (loader.hidden || i >= msgs.length) { clearInterval(t); return; }
-    loaderText.textContent = msgs[i++];
-  }, 3500);
-}
-rotateLoaderText();
-
-function showError(title, msg) {
-  resultArea.hidden = false;
-  loader.hidden = true;
-  resultCard.hidden = true;
-  errorCard.hidden = false;
-  errorCard.innerHTML = `<h3>⚠️ ${escapeHtml(title)}</h3><p>${escapeHtml(msg)}</p>`;
-  resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+function showError(msg) {
+  resultBox.style.display = 'block';
+  resultBox.innerHTML = `<div style="background: rgba(255,60,60,0.1); border: 1px solid rgba(255,60,60,0.3); color: #ff6b6b; padding: 16px; border-radius: 12px; text-align: center;">${escapeHtml(msg)}</div>`;
 }
 
-function fa(n) { return String(n).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]); }
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function parseJson(raw) {
+  try {
+    const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+    return JSON.parse(clean);
+  } catch (e) {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (match) {
+      try { return JSON.parse(match[0]); } catch (e2) {}
+    }
+    throw new Error('پاسخ دریافتی از هوش مصنوعی ساختار درستی نداشت.');
+  }
 }
 
-function parseJson(text) {
-  let t = String(text).trim();
-  t = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  try { return JSON.parse(t); } catch (_) {}
-  const m = t.match(/\{[\s\S]*\}/);
-  if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
-  return null;
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
+// تابع نمایش نتیجه با طراحی حرفه‌ای جدید
 function showResult(data) {
-  loader.hidden = true;
-  errorCard.hidden = true;
+  resultBox.style.display = 'block';
+  
+  const titleFa = escapeHtml(data.title_fa || 'نامشخص');
+  const titleEn = escapeHtml(data.title_en || 'Unknown');
+  const year = escapeHtml(data.year || '---');
+  const type = escapeHtml(data.type || 'نامشخص');
+  const confidence = escapeHtml(data.confidence || '0');
+  const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
+  const imdbID = data.imdbID || '';
+  
+  // ساخت پوستر: اگر IMDB ID و API Key داشتیم، پوستر واقعی، وگرنه یک باکس گرادیانتی زیبا
+  let posterHtml = '';
+  if (imdbID && OMDB_API_KEY !== 'YOUR_OMDB_API_KEY') {
+    const posterUrl = `https://img.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`;
+    posterHtml = `<img src="${posterUrl}" alt="${titleEn}" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                  <div class="poster-fallback" style="display:none;">${titleEn.charAt(0)}</div>`;
+  } else {
+    posterHtml = `<div class="poster-fallback">${titleEn.charAt(0)}</div>`;
+  }
 
-  const title = data.title || 'نامشخص';
-  const en = data.english_title ? `<span class="en" dir="ltr">${escapeHtml(data.english_title)}</span>` : '';
-  const conf = Math.max(0, Math.min(100, Number(data.confidence) || 0));
-  const alts = Array.isArray(data.alternatives) ? data.alternatives.slice(0, 4) : [];
+  // ساخت دکمه‌ها
+  const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
+  const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + year + ' movie')}`;
+  
+  // بررسی اینکه آیا توضیحات انگلیسی است یا خیر (برای اصلاح RTL)
+  const isEnglish = /^[A-Za-z\s.,!?'-]+$/.test(explanation);
+  const descDir = isEnglish ? 'ltr' : 'rtl';
 
-  const query = encodeURIComponent((data.english_title || title) + ' ' + (data.year || ''));
-  const imdbUrl = `https://www.imdb.com/find/?q=${query}`;
-  const googleUrl = `https://www.google.com/search?q=${query}+فیلم`;
-
-  resultCard.innerHTML = `
-    <div class="result-top">
-      <span class="found-badge">${data.found === false ? '❓ حدس احتمالی' : '✅ پیدا شد'}</span>
-      ${conf ? `<span class="conf-label">اطمینان: ${fa(conf)}٪</span>` : ''}
-    </div>
-    <h2 class="result-title">${escapeHtml(title)} ${en}</h2>
-    <div class="result-meta">
-      ${data.year ? `<span class="chip">📅 ${escapeHtml(String(data.year))}</span>` : ''}
-      ${data.country ? `<span class="chip">🌍 ${escapeHtml(data.country)}</span>` : ''}
-      ${data.type ? `<span class="chip">${data.type === 'سریال' ? '📺 سریال' : '🎬 فیلم سینمایی'}</span>` : ''}
-    </div>
-    <div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div>
-    ${data.scene ? `<p class="scene">${escapeHtml(data.scene)}</p>` : ''}
-    ${alts.length ? `
-      <div class="alts">
-        <h4>احتمالات دیگر:</h4>
-        ${alts.map(a => `
-          <div class="alt-item">
-            <strong>${escapeHtml(a.title || '')}</strong>
-            ${a.year ? `<span class="alt-year">(${escapeHtml(String(a.year))})</span>` : ''}
-            ${a.reason ? `<p>${escapeHtml(a.reason)}</p>` : ''}
-          </div>`).join('')}
-      </div>` : ''}
-    <div class="result-links">
-      <a href="${imdbUrl}" target="_blank" rel="noopener">جستجو در IMDb ↗</a>
-      <a href="${googleUrl}" target="_blank" rel="noopener">جستجو در گوگل ↗</a>
+  // ساخت بخش احتمالات
+  let altHtml = '';
+  if (data.alternatives && data.alternatives.length > 0) {
+    altHtml = `<div class="alternatives-box" style="grid-column: 1 / -1; width: 100%;">
+      <h4>احتمالات دیگر:</h4>
+      ${data.alternatives.map(alt => `<div style="font-size: 13px; color: #ccc; margin-bottom: 6px;">• <b>${escapeHtml(alt.title_fa)}</b> (${escapeHtml(alt.title_en)}) - ${escapeHtml(alt.reason)}</div>`).join('')}
     </div>`;
-  resultCard.hidden = false;
-  resultArea.hidden = false;
-  resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  resultBox.innerHTML = `
+    <div class="result-card-pro">
+      
+      <div class="poster-container">
+        ${posterHtml}
+      </div>
+
+      <div class="info-container">
+        <h2 class="result-title">${titleFa}</h2>
+        <div class="result-title-en">${titleEn} (${year})</div>
+        
+        <div class="badges-row">
+          <span class="badge">📺 ${type}</span>
+          <span class="badge">📅 ${year}</span>
+          <span class="badge confidence">✓ اطمینان: ${confidence}٪</span>
+        </div>
+
+        <div class="result-desc" dir="${descDir}">
+          ${explanation}
+        </div>
+
+        <div class="action-buttons">
+          <a href="${imdbLink}" target="_blank" rel="noopener" class="btn-action imdb">
+            IMDb
+          </a>
+          <a href="${googleLink}" target="_blank" rel="noopener" class="btn-action">
+            جستجو در گوگل
+          </a>
+        </div>
+      </div>
+
+      ${altHtml}
+      
+    </div>
+  `;
 }
+
+// اتصال دکمه‌ها
+btnText.addEventListener('click', runTextSearch);
+btnVideo.addEventListener('click', runVideoSearch);
