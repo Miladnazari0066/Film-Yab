@@ -6,24 +6,17 @@
     <title>فیلم‌یاب | جستجوی هوشمند فیلم</title>
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;800&display=swap" rel="stylesheet">
     <style>
-        /* ================= متغیرها و تنظیمات کلی ================= */
         :root {
             --bg-color: #050508;
             --surface-color: rgba(25, 25, 35, 0.6);
             --border-color: rgba(255, 255, 255, 0.08);
-            --primary-glow: #7c3aed; /* بنفش نئونی */
-            --secondary-glow: #06b6d4; /* فیروزه‌ای */
+            --primary-glow: #7c3aed;
+            --secondary-glow: #06b6d4;
             --text-main: #f8fafc;
             --text-muted: #94a3b8;
-            --gold: #fbbf24;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Vazirmatn', sans-serif;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; }
 
         body {
             background-color: var(--bg-color);
@@ -33,268 +26,127 @@
             flex-direction: column;
             overflow-x: hidden;
             position: relative;
-            /* 👇 این خط اضافه شد تا دکمه‌ها به نوار پایین گوشی نچسبن */
             padding-bottom: 80px; 
         }
 
-        /* افکت نورهای پس‌زمینه */
         .bg-glow-1, .bg-glow-2 {
-            position: fixed;
-            width: 600px;
-            height: 600px;
-            border-radius: 50%;
-            filter: blur(120px);
-            z-index: -1;
-            opacity: 0.15;
-            pointer-events: none;
+            position: fixed; width: 600px; height: 600px; border-radius: 50%;
+            filter: blur(120px); z-index: -1; opacity: 0.15; pointer-events: none;
         }
         .bg-glow-1 { top: -200px; right: -200px; background: var(--primary-glow); }
         .bg-glow-2 { bottom: -200px; left: -200px; background: var(--secondary-glow); }
 
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 40px 20px;
-            width: 100%;
-            flex: 1;
-        }
+        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; width: 100%; flex: 1; }
 
-        /* ================= هدر ================= */
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
+        .header { text-align: center; margin-bottom: 40px; }
         .header h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
-            margin-bottom: 10px;
+            font-size: 2.5rem; font-weight: 800; margin-bottom: 10px;
             background: linear-gradient(135deg, #fff, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-        .header p {
-            color: var(--text-muted);
-            font-size: 1.1rem;
-        }
+        .header p { color: var(--text-muted); font-size: 1.1rem; }
 
-        /* ================= تب‌ها ================= */
         .tabs-container {
-            display: flex;
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 50px;
-            padding: 5px;
-            margin-bottom: 30px;
-            backdrop-filter: blur(10px);
+            display: flex; background: var(--surface-color); border: 1px solid var(--border-color);
+            border-radius: 50px; padding: 5px; margin-bottom: 30px; backdrop-filter: blur(10px);
         }
         .tab-btn {
-            flex: 1;
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            padding: 12px 20px;
-            border-radius: 40px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 700;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+            flex: 1; background: transparent; border: none; color: var(--text-muted);
+            padding: 12px 20px; border-radius: 40px; cursor: pointer; font-size: 1rem; font-weight: 700;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 8px;
         }
-        .tab-btn.active {
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-        }
-        .tab-btn:hover:not(.active) {
-            color: #fff;
-        }
+        .tab-btn.active { background: rgba(255, 255, 255, 0.1); color: #fff; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
+        .tab-btn:hover:not(.active) { color: #fff; }
 
-        /* ================= پنل‌ها (فرم‌ها) ================= */
-        .panel {
-            display: none;
-            animation: fadeIn 0.4s ease-out;
-        }
-        .panel.active {
-            display: block;
-        }
+        .panel { display: none; animation: fadeIn 0.4s ease-out; }
+        .panel.active { display: block; }
 
         .glass-box {
-            background: var(--surface-color);
-            border: 1px solid var(--border-color);
-            border-radius: 24px;
-            padding: 30px;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            background: var(--surface-color); border: 1px solid var(--border-color);
+            border-radius: 24px; padding: 30px; backdrop-filter: blur(20px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
         }
 
         textarea, input[type="text"] {
-            width: 100%;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border-color);
-            color: #fff;
-            padding: 16px;
-            border-radius: 12px;
-            font-size: 1rem;
-            transition: all 0.3s;
-            outline: none;
-            resize: vertical;
+            width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color);
+            color: #fff; padding: 16px; border-radius: 12px; font-size: 1rem; transition: all 0.3s; outline: none; resize: vertical;
         }
-        textarea:focus, input[type="text"]:focus {
-            border-color: var(--primary-glow);
-            box-shadow: 0 0 15px rgba(124, 58, 237, 0.2);
-        }
+        textarea:focus, input[type="text"]:focus { border-color: var(--primary-glow); box-shadow: 0 0 15px rgba(124, 58, 237, 0.2); }
         
-        .row {
-            display: flex;
-            gap: 15px;
-            margin-top: 15px;
-            margin-bottom: 20px;
-        }
-        .row input {
-            flex: 1;
-        }
+        .row { display: flex; gap: 15px; margin-top: 15px; margin-bottom: 20px; }
+        .row input { flex: 1; }
 
         .btn-primary {
-            width: 100%;
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
+            width: 100%; padding: 16px; border: none; border-radius: 12px;
             background: linear-gradient(135deg, var(--primary-glow), var(--secondary-glow));
-            color: #fff;
-            font-size: 1.1rem;
-            font-weight: 800;
-            cursor: pointer;
-            transition: all 0.3s;
+            color: #fff; font-size: 1.1rem; font-weight: 800; cursor: pointer; transition: all 0.3s;
             box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
         }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5);
-        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5); }
 
-        /* ================= آپلود ویدیو ================= */
         .dropzone {
-            border: 2px dashed var(--border-color);
-            border-radius: 16px;
-            padding: 40px 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: rgba(0, 0, 0, 0.2);
-            margin-bottom: 20px;
+            border: 2px dashed var(--border-color); border-radius: 16px; padding: 40px 20px;
+            text-align: center; cursor: pointer; transition: all 0.3s; background: rgba(0, 0, 0, 0.2); margin-bottom: 20px;
         }
-        .dropzone:hover {
-            border-color: var(--secondary-glow);
-            background: rgba(6, 182, 212, 0.05);
-        }
+        .dropzone:hover { border-color: var(--secondary-glow); background: rgba(6, 182, 212, 0.05); }
         .dropzone-icon { font-size: 3rem; margin-bottom: 10px; }
         
-        /* ================= لودر ================= */
+        /* ================= لودر و نوار پیشرفت ================= */
         #loader {
-            display: none;
-            text-align: center;
-            margin-top: 30px;
-            color: var(--secondary-glow);
+            display: none; text-align: center; margin-top: 40px; color: var(--secondary-glow);
         }
         .spinner {
-            width: 40px; height: 40px;
-            border: 4px solid rgba(6, 182, 212, 0.2);
-            border-top-color: var(--secondary-glow);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
+            width: 40px; height: 40px; border: 4px solid rgba(6, 182, 212, 0.2);
+            border-top-color: var(--secondary-glow); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px;
+        }
+        .progress-container {
+            width: 80%; max-width: 300px; height: 8px; background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px; margin: 15px auto 5px; overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary-glow), var(--secondary-glow));
+            border-radius: 10px; transition: width 0.3s ease;
+        }
+        #progress-text {
+            font-size: 0.85rem; color: var(--text-muted); font-family: monospace;
         }
 
         /* ================= کارت نتیجه ================= */
-        #result-box {
-            display: none;
-            margin-top: 30px;
-        }
+        #result-box { display: none; margin-top: 30px; }
         
         .result-card {
-            background: var(--surface-color);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 24px;
-            padding: 24px;
-            display: flex;
-            gap: 24px;
-            backdrop-filter: blur(20px);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            animation: slideUp 0.5s ease-out;
+            background: var(--surface-color); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px;
+            padding: 24px; display: flex; gap: 24px; backdrop-filter: blur(20px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); animation: slideUp 0.5s ease-out;
         }
 
         .poster {
-            width: 180px;
-            height: 270px;
-            border-radius: 16px;
-            object-fit: cover;
-            background: linear-gradient(135deg, #1e1e2f, #0a0a12);
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 3rem;
-            font-weight: bold;
-            color: #444;
+            width: 180px; height: 270px; border-radius: 16px; object-fit: cover;
+            background: linear-gradient(135deg, #1e1e2f, #0a0a12); border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+            font-size: 3rem; font-weight: bold; color: #444;
         }
 
-        .info {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-        }
-
+        .info { flex: 1; display: flex; flex-direction: column; }
         .title-fa { font-size: 1.8rem; font-weight: 800; margin-bottom: 5px; }
         .title-en { font-size: 1rem; color: var(--text-muted); margin-bottom: 15px; direction: ltr; text-align: right; }
         
-        .badges {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
+        .badges { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
         .badge {
-            background: rgba(255,255,255,0.05);
-            padding: 6px 14px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            border: 1px solid rgba(255,255,255,0.1);
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            background: rgba(255,255,255,0.05); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem;
+            border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 6px;
         }
-        .badge.confidence {
-            color: #34d399;
-            background: rgba(52, 211, 153, 0.1);
-            border-color: rgba(52, 211, 153, 0.2);
-        }
+        .badge.confidence { color: #34d399; background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.2); }
 
         .desc {
-            background: rgba(0,0,0,0.2);
-            padding: 15px;
-            border-radius: 12px;
-            line-height: 1.8;
-            font-size: 0.95rem;
-            color: #cbd5e1;
-            border-right: 4px solid var(--secondary-glow);
-            margin-bottom: 20px;
+            background: rgba(0,0,0,0.2); padding: 15px; border-radius: 12px; line-height: 1.8;
+            font-size: 0.95rem; color: #cbd5e1; border-right: 4px solid var(--secondary-glow); margin-bottom: 20px;
         }
         .desc[dir="ltr"] { border-right: none; border-left: 4px solid var(--secondary-glow); text-align: left;}
 
         .actions { display: flex; gap: 10px; margin-top: auto; }
         .btn-action {
-            padding: 10px 20px;
-            border-radius: 10px;
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 0.9rem;
-            transition: all 0.3s;
-            text-align: center;
-            flex: 1;
+            padding: 10px 20px; border-radius: 10px; text-decoration: none; font-weight: 700;
+            font-size: 0.9rem; transition: all 0.3s; text-align: center; flex: 1;
         }
         .btn-imdb { background: #f5c518; color: #000; }
         .btn-imdb:hover { background: #e0b20f; transform: translateY(-2px); }
@@ -302,7 +154,6 @@
         .btn-google:hover { background: rgba(255,255,255,0.2); transform: translateY(-2px); }
 
         .alternatives { margin-top: 20px; border-top: 1px dashed var(--border-color); padding-top: 15px; font-size: 0.9rem; }
-
         .footer { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.9rem; }
 
         @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -341,7 +192,6 @@
             </button>
         </div>
 
-        <!-- پنل متنی -->
         <div class="panel active" id="panel-text">
             <div class="glass-box">
                 <textarea id="story" rows="4" placeholder="مثلاً: یک معلم شیمی که سرطان داره شروع میکنه به ساخت مواد مخدر..."></textarea>
@@ -353,7 +203,6 @@
             </div>
         </div>
 
-        <!-- پنل ویدیو -->
         <div class="panel" id="panel-video">
             <div class="glass-box">
                 <div class="dropzone" id="dropzone">
@@ -374,9 +223,14 @@
             </div>
         </div>
 
+        <!-- 👇 بخش لودر با نوار پیشرفت جدید 👇 -->
         <div id="loader">
             <div class="spinner"></div>
             <p id="loader-text">در حال جستجو در آرشیو سینما...</p>
+            <div class="progress-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <span id="progress-text">0%</span>
         </div>
 
         <div id="result-box"></div>
@@ -387,7 +241,6 @@
         <p>ساخته‌شده با ❤️</p>
     </footer>
 
-    <!-- اسکریپت‌ها -->
     <script src="config.js"></script>
     <script src="script.js"></script>
 </body>
