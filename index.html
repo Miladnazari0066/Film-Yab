@@ -4,78 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>فیلم‌یاب | Film-Yab</title>
-  <link rel="stylesheet" href="style.css">
-</head>
+  
+  <!-- اگر خط لینک به سی اس اس رو داری، میتونی همینجا نگه داری یا پاکش کنی -->
+  <link rel="stylesheet" href="style.css"> 
+
+  <!-- 👇👇 کدهای استایل (CSS) رو دقیقا از اینجا شروع کن به پیست کردن 👇👇 -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;800&display=swap');
+    
+    :root {
+      --bg: #0a0a12;
+      --gold: #f5b942;
+    /* ... بقیه کدهای CSS که فرستادم ... */
+    
+    @media (max-width: 600px) {
+      /* ... */
+    }
+  </style>
+  <!-- 👆👆 تا اینجا که تموم بشه 👆👆 -->
+
+</head> <!-- این همون تگیه که کدها باید قبلش باشن -->
 <body>
-
-  <div class="container">
-    <!-- بخش هدر -->
-    <header class="hero">
-      <h1>فیلم رو یادته، اسمش یادت نیست؟</h1>
-      <p>داستانش رو تعریف کن، یا سکانسی از ویدیو یا ریلز رو بده تا هوش مصنوعی فیلم یا سریال مورد نظرت رو پیدا کنه.</p>
-    </header>
-
-    <!-- تب‌ها -->
-    <div class="tabs" role="tablist">
-      <button class="tab active" data-tab="text" role="tab" aria-selected="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>
-        جستجو با داستان
-      </button>
-      <button class="tab" data-tab="video" role="tab" aria-selected="false">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="2" y1="7" x2="7" y2="7"></line><line x1="2" y1="17" x2="7" y2="17"></line><line x1="17" y1="17" x2="22" y2="17"></line><line x1="17" y1="7" x2="22" y2="7"></line></svg>
-        جستجو با ویدیو
-      </button>
-    </div>
-
-    <!-- پنل متنی -->
-    <div class="panel active" id="panel-text">
-      <div class="form-group">
-        <textarea id="story" rows="5" placeholder="مثلاً: یک معلم شیمی که سرطان داره شروع میکنه به ساخت مواد مخدر با یک شاگرد سابقش..."></textarea>
-      </div>
-      <div class="optional-fields">
-        <input type="text" id="year" placeholder="سال ساخت (اختیاری)">
-        <input type="text" id="country" placeholder="کشور سازنده (اختیاری)">
-      </div>
-      <button class="btn-primary" id="btn-text">پیدا کن!</button>
-    </div>
-
-    <!-- پنل ویدیو -->
-    <div class="panel" id="panel-video">
-      <div class="dropzone" id="dropzone">
-        <span class="dropzone-icon">🎬</span>
-        <p>ویدیو یا ریلز رو اینجا رها کن یا کلیک کن</p>
-        <small>فرمت‌های مجاز: MP4, MOV, WEBM</small>
-      </div>
-      <input type="file" id="file-input" accept="video/*" style="display: none;">
-      
-      <div id="video-info" style="display: none; margin-bottom: 16px; text-align: center;">
-        <p class="filename" style="color: var(--gold); font-weight: bold; margin-bottom: 5px;"></p>
-        <p class="filesize" style="font-size: 12px; color: #888; margin-bottom: 10px;"></p>
-        <video id="video-preview" controls style="max-width: 100%; border-radius: 8px; max-height: 200px;"></video>
-      </div>
-
-      <div class="form-group">
-        <textarea id="caption" rows="2" placeholder="توضیحات یا کپشن ویدیو (اختیاری)..."></textarea>
-      </div>
-      <button class="btn-primary" id="btn-video">تحلیل ویدیو!</button>
-    </div>
-
-    <!-- لودر -->
-    <div class="loader-container" id="loader">
-      <div class="spinner"></div>
-      <p id="loader-text">در حال جستجو در حافظه سینما...</p>
-    </div>
-
-    <!-- محل نمایش نتیجه -->
-    <div id="result" style="display: none;"></div>
-
-  </div>
-
-  <footer class="footer">
-    <p>ساخته‌شده با ❤️</p>
-  </footer>
-
-  <script src="config.js"></script>
-  <script src="script.js"></script>
-</body>
-</html>
+  <!-- بقیه کدهای اچ تی ام ال -->
