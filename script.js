@@ -8,6 +8,10 @@ const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FRAME_COUNT = 6;
 const FRAME_WIDTH = 512;
 
+// 🔴 کلید API رایگان OMDb رو اینجا بذار (از سایت omdbapi.com بگیر)
+// اگر کلید نذاری، سایت خطا نمیده و فقط پوستر پیش‌فرض (حرف اول اسم فیلم) رو نشون میده.
+const OMDB_API_KEY = 'YOUR_OMDB_API_KEY'; 
+
 const $ = id => document.getElementById(id);
 
 // المان‌ها
@@ -41,6 +45,7 @@ tabBtns.forEach(btn => {
 
 let selectedFile = null;
 
+// مدیریت آپلود
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
 dropzone.addEventListener('dragleave', () => dropzone.style.borderColor = 'var(--border-color)');
@@ -71,6 +76,7 @@ function setVideoFile(file) {
     videoInfo.querySelector('.filesize').textContent = fmtSize(file.size);
 }
 
+// استخراج فریم از ویدیو
 async function extractFrames(file, count = FRAME_COUNT) {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
@@ -103,10 +109,12 @@ async function extractFrames(file, count = FRAME_COUNT) {
     });
 }
 
+// ساخت دستور (Prompt) برای هوش مصنوعی
 function buildPrompt(text, year, country) {
     return `تو یک کارشناس سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
 اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
 نام دقیق اثر (فارسی و انگلیسی)، سال، نوع (فیلم/سریال)، توضیح فارسی و آیدی IMDb را پیدا کن.
+**توجه بسیار مهم: نام فارسی فیلم را با املای کاملاً صحیح و رایج در ایران بنویس (مثلاً «بریکینگ بد» بنویس، نه «پیکینگ باد» یا «برکینگ باد»).**
 خروجی را **فقط** به صورت JSON خالص (بدون بک‌تیک) با این ساختار بده:
 {
   "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
@@ -115,6 +123,7 @@ function buildPrompt(text, year, country) {
 }`;
 }
 
+// ارتباط با API اوپن‌روتر
 async function callOpenRouter(content) {
     if (!cfg.OPENROUTER_API_KEY || cfg.OPENROUTER_API_KEY.trim() === "") {
         throw new Error("کلید API خالی است! فایل config.js را چک کنید.");
@@ -146,14 +155,13 @@ async function callOpenRouter(content) {
             }
         } catch (err) {
             console.warn(`مدل ${model} خطا داد:`, err);
-            // اگر خطای 401 یا 402 بود، دیگه مدل بعدی رو امتحان نکن، مستقیم ارور بده
-            if (err.message.includes("401") || err.message.includes("402")) throw err;
+            if (err.message.includes("401") || err.message.includes("402")) throw err; // اگر کلید مشکل داشت مدل بعدی رو امتحان نکن
         }
     }
     throw new Error("هیچ‌کدام از مدل‌های هوش مصنوعی پاسخ ندادند.");
 }
 
-// تابع جستجوی متنی
+// جستجوی متنی
 btnText.addEventListener('click', async () => {
     const text = storyInput.value.trim();
     if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید (حداقل ۱۰ کاراکتر).');
@@ -170,11 +178,11 @@ btnText.addEventListener('click', async () => {
     } catch (err) {
         showLoader(false);
         showError(err.message);
-        alert("خطای جستجو: " + err.message); // این خط باعث میشه ارور رو با چشم ببینی
+        alert("خطای جستجو: " + err.message);
     }
 });
 
-// تابع جستجوی ویدیویی
+// جستجوی ویدیویی
 btnVideo.addEventListener('click', async () => {
     if (!selectedFile) return showError('لطفاً ابتدا یک ویدیو انتخاب کنید.');
     
@@ -189,7 +197,7 @@ btnVideo.addEventListener('click', async () => {
         const content = [{ type: "text", text: prompt }];
         frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
 
-        loaderText.textContent = 'در حال تحلیل...';
+        loaderText.textContent = 'در حال تحلیل تصاویر...';
         const rawResponse = await callOpenRouter(content);
         
         const parsedData = parseJson(rawResponse);
@@ -199,15 +207,16 @@ btnVideo.addEventListener('click', async () => {
     } catch (err) {
         showLoader(false);
         showError(err.message);
-        alert("خطای تحلیل ویدیو: " + err.message); // این خط باعث میشه ارور رو با چشم ببینی
+        alert("خطای تحلیل ویدیو: " + err.message);
     }
 });
 
+// مدیریت لودر
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
     if (show) {
         resultBox.style.display = 'none';
-        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو...'];
+        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو سینما...'];
         let i = 0;
         loaderText.textContent = msgs[0];
         const int = setInterval(() => { i = (i + 1) % msgs.length; loaderText.textContent = msgs[i]; }, 2500);
@@ -217,11 +226,13 @@ function showLoader(show) {
     }
 }
 
+// نمایش خطا
 function showError(msg) {
     resultBox.style.display = 'block';
     resultBox.innerHTML = `<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 20px; border-radius: 16px; text-align: center; font-weight: bold;">${escapeHtml(msg)}</div>`;
 }
 
+// تبدیل پاسخ خام به JSON
 function parseJson(raw) {
     try {
         const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -231,21 +242,29 @@ function parseJson(raw) {
         if (match) {
             try { return JSON.parse(match[0]); } catch (e2) {}
         }
-        // اگر هوش مصنوعی جواب عجیبی داده بود
         throw new Error("هوش مصنوعی جواب داد، اما فرمت آن JSON نبود.");
     }
 }
 
+// جلوگیری از تزریق کد (XSS)
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
+// نمایش نتیجه نهایی
 function showResult(data) {
     if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
     resultBox.style.display = 'block';
     
-    const titleFa = escapeHtml(data.title_fa || 'نامشخص');
+    // ✅ فیلتر هوشمند برای اصلاح غلط‌های املایی رایج هوش مصنوعی
+    let rawTitleFa = data.title_fa || 'نامشخص';
+    rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد')
+                           .replace(/برکینگ باد/gi, 'بریکینگ بد')
+                           .replace(/بریکینگ بد/gi, 'بریکینگ بد')
+                           .replace(/گیم آف ترونز/gi, 'بازی تاج و تخت');
+
+    const titleFa = escapeHtml(rawTitleFa);
     const titleEn = escapeHtml(data.title_en || 'Unknown');
     const year = escapeHtml(data.year || '---');
     const type = escapeHtml(data.type || 'نامشخص');
@@ -253,13 +272,24 @@ function showResult(data) {
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
-    let posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
-    const imdbLink = `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
+    // پوستر فیلم
+    let posterHtml = '';
+    if (imdbID && OMDB_API_KEY !== 'YOUR_OMDB_API_KEY') {
+        const posterUrl = `https://img.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`;
+        posterHtml = `<img src="${posterUrl}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
+    } else {
+        posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
+    }
+
+    // لینک‌ها
+    const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
     const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + year + ' movie')}`;
     
+    // تشخیص زبان توضیحات برای رفع مشکل RTL/LTR
     const isEnglish = /^[A-Za-z\s.,!?'-]+$/.test(explanation);
     const descDir = isEnglish ? 'ltr' : 'rtl';
 
+    // احتمالات دیگر
     let altHtml = '';
     if (data.alternatives && data.alternatives.length > 0) {
         altHtml = `<div class="alternatives">
@@ -268,6 +298,7 @@ function showResult(data) {
         </div>`;
     }
 
+    // قالب HTML کارت نتیجه
     resultBox.innerHTML = `
         <div class="result-card">
             ${posterHtml}
