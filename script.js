@@ -8,9 +8,8 @@ const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FRAME_COUNT = 6;
 const FRAME_WIDTH = 512;
 
-// 🔴 کلید API رایگان OMDb رو اینجا بذار (از سایت omdbapi.com بگیر)
-// اگر کلید نذاری، سایت خطا نمیده و فقط پوستر پیش‌فرض (حرف اول اسم فیلم) رو نشون میده.
-const OMDB_API_KEY = 'YOUR_OMDB_API_KEY'; 
+// 🔑 کلید API شما برای OMDb
+const OMDB_API_KEY = 'b44a4ca6';
 
 const $ = id => document.getElementById(id);
 
@@ -155,7 +154,7 @@ async function callOpenRouter(content) {
             }
         } catch (err) {
             console.warn(`مدل ${model} خطا داد:`, err);
-            if (err.message.includes("401") || err.message.includes("402")) throw err; // اگر کلید مشکل داشت مدل بعدی رو امتحان نکن
+            if (err.message.includes("401") || err.message.includes("402")) throw err;
         }
     }
     throw new Error("هیچ‌کدام از مدل‌های هوش مصنوعی پاسخ ندادند.");
@@ -173,7 +172,7 @@ btnText.addEventListener('click', async () => {
         
         const parsedData = parseJson(rawResponse);
         showLoader(false);
-        showResult(parsedData);
+        await showResult(parsedData); // حالا await داریم چون showResult باید OMDb رو صدا بزنه
         
     } catch (err) {
         showLoader(false);
@@ -202,7 +201,7 @@ btnVideo.addEventListener('click', async () => {
         
         const parsedData = parseJson(rawResponse);
         showLoader(false);
-        showResult(parsedData);
+        await showResult(parsedData);
 
     } catch (err) {
         showLoader(false);
@@ -252,8 +251,28 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
+// دریافت پوستر و امتیاز از OMDb
+async function fetchOMDbData(imdbID) {
+    if (!imdbID) return { poster: null, rating: null };
+    
+    try {
+        const res = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`);
+        const data = await res.json();
+        
+        if (data.Response === 'True') {
+            return {
+                poster: data.Poster !== 'N/A' ? data.Poster : null,
+                rating: data.imdbRating !== 'N/A' ? data.imdbRating : null
+            };
+        }
+    } catch (e) {
+        console.warn('خطا در دریافت اطلاعات OMDb:', e);
+    }
+    return { poster: null, rating: null };
+}
+
 // نمایش نتیجه نهایی
-function showResult(data) {
+async function showResult(data) {
     if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
     resultBox.style.display = 'block';
     
@@ -272,13 +291,21 @@ function showResult(data) {
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
+    // دریافت پوستر و امتیاز از OMDb
+    const omdbData = await fetchOMDbData(imdbID);
+    
     // پوستر فیلم
     let posterHtml = '';
-    if (imdbID && OMDB_API_KEY !== 'YOUR_OMDB_API_KEY') {
-        const posterUrl = `https://img.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`;
-        posterHtml = `<img src="${posterUrl}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
+    if (omdbData.poster) {
+        posterHtml = `<img src="${omdbData.poster}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
     } else {
         posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
+    }
+
+    // امتیاز IMDb
+    let imdbRatingHtml = '';
+    if (omdbData.rating) {
+        imdbRatingHtml = `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold;">⭐ IMDb: ${omdbData.rating}/10</span>`;
     }
 
     // لینک‌ها
@@ -309,6 +336,7 @@ function showResult(data) {
                     <span class="badge">🎬 ${type}</span>
                     <span class="badge">📅 ${year}</span>
                     <span class="badge confidence">✓ اطمینان: ${confidence}٪</span>
+                    ${imdbRatingHtml}
                 </div>
                 <div class="desc" dir="${descDir}">${explanation}</div>
                 <div class="actions">
