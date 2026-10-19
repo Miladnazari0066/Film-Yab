@@ -3,12 +3,12 @@ if (typeof window.APP_CONFIG === 'undefined') {
     alert("خطای مهم: فایل config.js لود نشده است یا کلید API در آن وجود ندارد!");
 }
 
-const cfg = window.APP_CONFIG || { OPENROUTER_API_KEY: '', MODELS: ['openrouter/free'] };
+const cfg = window.APP_CONFIG || { OPENROUTER_API_KEYS: [], MODELS: ['openrouter/free'] };
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const FRAME_COUNT = 8; // 👈 تعداد فریم‌ها از ۶ به ۸ افزایش پیدا کرد
+const FRAME_COUNT = 8; 
 const FRAME_WIDTH = 512;
 
-// 🔑 کلید API شما برای OMDb
+// 🔑 کلید API شما برای OMDb (پوستر و امتیاز)
 const OMDB_API_KEY = 'b44a4ca6';
 
 const $ = id => document.getElementById(id);
@@ -108,7 +108,7 @@ async function extractFrames(file, count = FRAME_COUNT) {
     });
 }
 
-// ساخت دستور (Prompt) هوشمند برای متن و ویدیو
+// ساخت دستور (Prompt) هوشمند
 function buildPrompt(text, year, country, isVideo) {
     if (isVideo) {
         return `تو یک کارشناس ارشد سینما و متخصص تشخیص چهره و صحنه هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
@@ -140,42 +140,50 @@ function buildPrompt(text, year, country, isVideo) {
     }
 }
 
-// ارتباط با API
+// 🚀 ارتباط هوشمند با API (سیستم Fallback چند لایه)
 async function callOpenRouter(content) {
-    if (!cfg.OPENROUTER_API_KEY || cfg.OPENROUTER_API_KEY.trim() === "") {
-        throw new Error("کلید API خالی است! فایل config.js را چک کنید.");
+    if (!cfg.OPENROUTER_API_KEYS || cfg.OPENROUTER_API_KEYS.length === 0) {
+        throw new Error("هیچ کلید API در config.js تعریف نشده است!");
     }
 
+    // حلقه اول: روی مدل‌ها می‌چرخیم
     for (const model of cfg.MODELS) {
-        try {
-            const res = await fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${cfg.OPENROUTER_API_KEY}`,
-                    'Content-Type': 'application/json',
-                    'HTTP-Referer': location.origin,
-                    'X-Title': 'Film-Yab'
-                },
-                body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.2 })
-            });
+        // حلقه دوم: برای هر مدل، روی کلیدها می‌چرخیم
+        for (let i = 0; i < cfg.OPENROUTER_API_KEYS.length; i++) {
+            const apiKey = cfg.OPENROUTER_API_KEYS[i];
+            if (!apiKey || apiKey.trim() === "") continue;
 
-            if (!res.ok) {
-                if (res.status === 401) throw new Error("کلید API معتبر نیست (401).");
-                if (res.status === 402) throw new Error("اعتبار حساب OpenRouter شما تمام شده است (402).");
-                if (res.status === 429) throw new Error("درخواست‌ها زیاد شده است. کمی صبر کنید (429).");
-                throw new Error(`خطای سرور: ${res.status}`);
-            }
+            try {
+                console.log(`تلاش با مدل: ${model} و کلید شماره ${i + 1}`);
+                
+                const res = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                        'HTTP-Referer': location.origin,
+                        'X-Title': 'Film-Yab'
+                    },
+                    body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.2 })
+                });
 
-            const data = await res.json();
-            if (data.choices && data.choices.length > 0) {
-                return data.choices[0].message.content;
+                if (!res.ok) {
+                    console.warn(`مدل ${model} با کلید ${i + 1} خطا داد. کد: ${res.status}`);
+                    continue; // این کلید/مدل خطا داد، میره سراغ کلید بعدی
+                }
+
+                const data = await res.json();
+                if (data.choices && data.choices.length > 0) {
+                    console.log(`✅ موفقیت! پاسخ از مدل ${model} با کلید ${i + 1} دریافت شد.`);
+                    return data.choices[0].message.content;
+                }
+            } catch (err) {
+                console.warn(`خطای شبکه در مدل ${model} با کلید ${i + 1}:`, err);
             }
-        } catch (err) {
-            console.warn(`مدل ${model} خطا داد:`, err);
-            if (err.message.includes("401") || err.message.includes("402")) throw err;
         }
     }
-    throw new Error("هیچ‌کدام از مدل‌های هوش مصنوعی پاسخ ندادند.");
+    
+    throw new Error("متاسفانه تمام مدل‌ها و کلیدها تلاش شدند اما هیچ پاسخی دریافت نشد. لطفاً کمی بعد دوباره تلاش کنید.");
 }
 
 // جستجوی متنی
