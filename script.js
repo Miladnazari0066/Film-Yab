@@ -8,7 +8,7 @@ const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FRAME_COUNT = 8; 
 const FRAME_WIDTH = 512;
 
-// 🔑 کلید API شما برای OMDb (پوستر و امتیاز)
+// 🔑 کلید API شما برای OMDb
 const OMDB_API_KEY = 'b44a4ca6';
 
 const $ = id => document.getElementById(id);
@@ -29,6 +29,8 @@ const btnVideo = $('btn-video');
 const loader = $('loader');
 const loaderText = $('loader-text');
 const resultBox = $('result-box');
+const progressBar = $('progress-bar');
+const progressText = $('progress-text');
 
 // مدیریت تب‌ها
 tabBtns.forEach(btn => {
@@ -44,7 +46,6 @@ tabBtns.forEach(btn => {
 
 let selectedFile = null;
 
-// مدیریت آپلود
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
 dropzone.addEventListener('dragleave', () => dropzone.style.borderColor = 'var(--border-color)');
@@ -75,7 +76,6 @@ function setVideoFile(file) {
     videoInfo.querySelector('.filesize').textContent = fmtSize(file.size);
 }
 
-// استخراج فریم از ویدیو
 async function extractFrames(file, count = FRAME_COUNT) {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
@@ -108,7 +108,6 @@ async function extractFrames(file, count = FRAME_COUNT) {
     });
 }
 
-// ساخت دستور (Prompt) هوشمند
 function buildPrompt(text, year, country, isVideo) {
     if (isVideo) {
         return `تو یک کارشناس ارشد سینما و متخصص تشخیص چهره و صحنه هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
@@ -140,22 +139,18 @@ function buildPrompt(text, year, country, isVideo) {
     }
 }
 
-// 🚀 ارتباط هوشمند با API (سیستم Fallback چند لایه)
+// 🚀 سیستم Fallback چند لایه
 async function callOpenRouter(content) {
     if (!cfg.OPENROUTER_API_KEYS || cfg.OPENROUTER_API_KEYS.length === 0) {
         throw new Error("هیچ کلید API در config.js تعریف نشده است!");
     }
 
-    // حلقه اول: روی مدل‌ها می‌چرخیم
     for (const model of cfg.MODELS) {
-        // حلقه دوم: برای هر مدل، روی کلیدها می‌چرخیم
         for (let i = 0; i < cfg.OPENROUTER_API_KEYS.length; i++) {
             const apiKey = cfg.OPENROUTER_API_KEYS[i];
             if (!apiKey || apiKey.trim() === "") continue;
 
             try {
-                console.log(`تلاش با مدل: ${model} و کلید شماره ${i + 1}`);
-                
                 const res = await fetch(API_URL, {
                     method: 'POST',
                     headers: {
@@ -169,12 +164,11 @@ async function callOpenRouter(content) {
 
                 if (!res.ok) {
                     console.warn(`مدل ${model} با کلید ${i + 1} خطا داد. کد: ${res.status}`);
-                    continue; // این کلید/مدل خطا داد، میره سراغ کلید بعدی
+                    continue; 
                 }
 
                 const data = await res.json();
                 if (data.choices && data.choices.length > 0) {
-                    console.log(`✅ موفقیت! پاسخ از مدل ${model} با کلید ${i + 1} دریافت شد.`);
                     return data.choices[0].message.content;
                 }
             } catch (err) {
@@ -182,7 +176,6 @@ async function callOpenRouter(content) {
             }
         }
     }
-    
     throw new Error("متاسفانه تمام مدل‌ها و کلیدها تلاش شدند اما هیچ پاسخی دریافت نشد. لطفاً کمی بعد دوباره تلاش کنید.");
 }
 
@@ -192,16 +185,26 @@ btnText.addEventListener('click', async () => {
     if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید.');
 
     showLoader(true);
+    startProgress(); // 👈 شروع نوار پیشرفت
+
     try {
         const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
         const rawResponse = await callOpenRouter([{ type: "text", text: prompt }]);
         const parsedData = parseJson(rawResponse);
-        showLoader(false);
-        await showResult(parsedData);
+        
+        finishProgress(); // 👈 پر کردن نهایی نوار
+        setTimeout(async () => {
+            showLoader(false);
+            await showResult(parsedData);
+        }, 400); // ۴۰۰ میلی‌ثانیه صبر می‌کنیم تا کاربر پر شدن نوار رو ببینه
+
     } catch (err) {
-        showLoader(false);
-        showError(err.message);
-        alert("خطای جستجو: " + err.message);
+        finishProgress();
+        setTimeout(() => {
+            showLoader(false);
+            showError(err.message);
+            alert("خطای جستجو: " + err.message);
+        }, 400);
     }
 });
 
@@ -210,9 +213,10 @@ btnVideo.addEventListener('click', async () => {
     if (!selectedFile) return showError('لطفاً ابتدا یک ویدیو انتخاب کنید.');
     
     showLoader(true);
-    loaderText.textContent = 'در حال استخراج فریم‌ها...';
+    startProgress(); // 👈 شروع نوار پیشرفت
     
     try {
+        loaderText.textContent = 'در حال استخراج فریم‌ها...';
         const frames = await extractFrames(selectedFile);
         const caption = captionInput.value.trim() || '';
         const prompt = buildPrompt(caption, '', '', true);
@@ -223,16 +227,24 @@ btnVideo.addEventListener('click', async () => {
         loaderText.textContent = 'در حال تحلیل تصاویر...';
         const rawResponse = await callOpenRouter(content);
         const parsedData = parseJson(rawResponse);
-        showLoader(false);
-        await showResult(parsedData);
+        
+        finishProgress(); // 👈 پر کردن نهایی نوار
+        setTimeout(async () => {
+            showLoader(false);
+            await showResult(parsedData);
+        }, 400);
 
     } catch (err) {
-        showLoader(false);
-        showError(err.message);
-        alert("خطای تحلیل ویدیو: " + err.message);
+        finishProgress();
+        setTimeout(() => {
+            showLoader(false);
+            showError(err.message);
+            alert("خطای تحلیل ویدیو: " + err.message);
+        }, 400);
     }
 });
 
+// مدیریت لودر
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
     if (show) {
@@ -240,11 +252,37 @@ function showLoader(show) {
         const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو سینما...'];
         let i = 0;
         loaderText.textContent = msgs[0];
-        const int = setInterval(() => { i = (i + 1) % msgs.length; loaderText.textContent = msgs[i]; }, 2500);
+        const int = setInterval(() => { i = (i + 1) % msgs.length; loaderText.textContent = msgs[i]; }, 3000);
         loader.dataset.interval = int;
     } else {
         clearInterval(loader.dataset.interval);
     }
+}
+
+// 🟢 توابع شبیه‌سازی نوار پیشرفت
+let progressInterval;
+let currentProgress = 0;
+
+function startProgress() {
+    clearInterval(progressInterval);
+    currentProgress = 0;
+    progressBar.style.width = '0%';
+    progressText.textContent = '0%';
+
+    progressInterval = setInterval(() => {
+        // تا ۹۰٪ میره جلو، هر چی نزدیک‌تر، آهسته‌تر
+        if (currentProgress < 90) {
+            currentProgress += Math.max(0.5, (90 - currentProgress) * 0.05);
+            progressBar.style.width = `${currentProgress}%`;
+            progressText.textContent = `${Math.round(currentProgress)}%`;
+        }
+    }, 150);
+}
+
+function finishProgress() {
+    clearInterval(progressInterval);
+    progressBar.style.width = '100%';
+    progressText.textContent = '100%';
 }
 
 function showError(msg) {
