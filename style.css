@@ -1,8 +1,220 @@
-/* --- استایل‌های قبلی رو نگه دار و این‌ها رو اضافه کن --- */
+@import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;800&display=swap');
 
-/* کارت نتیجه حرفه‌ای */
+:root {
+  --bg: #0a0a12;
+  --gold: #f5b942;
+  --teal: #2ec4b6;
+  --text: #e0e0e0;
+  --text-muted: #888;
+  --card-bg: rgba(20, 20, 30, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Vazirmatn', sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  direction: rtl;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* افکت‌های پس‌زمینه (نور و گرین) */
+body::before {
+  content: '';
+  position: fixed;
+  top: -50%; left: -50%; width: 200%; height: 200%;
+  background: radial-gradient(circle at 20% 30%, rgba(245, 185, 66, 0.05) 0%, transparent 40%),
+              radial-gradient(circle at 80% 70%, rgba(46, 196, 182, 0.05) 0%, transparent 40%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  width: 100%;
+  flex-grow: 1;
+}
+
+/* هدر */
+.hero {
+  text-align: center;
+  margin-bottom: 40px;
+  animation: fadeIn 0.8s ease;
+}
+
+.hero h1 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 12px;
+  background: linear-gradient(90deg, #fff, var(--gold));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero p {
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+/* تب‌ها */
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.tab {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  padding: 10px 24px;
+  border-radius: 30px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tab svg, .tab i {
+  width: 20px;
+  height: 20px;
+}
+
+.tab.active {
+  background: var(--gold);
+  color: #000;
+  border-color: var(--gold);
+  box-shadow: 0 4px 15px rgba(245, 185, 66, 0.3);
+}
+
+.tab:not(.active):hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* پنل‌ها */
+.panel {
+  display: none;
+  animation: fadeIn 0.4s ease;
+  background: var(--card-bg);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+}
+
+.panel.active {
+  display: block;
+}
+
+/* فرم‌ها */
+.form-group {
+  margin-bottom: 16px;
+}
+
+textarea, input[type="text"] {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  padding: 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 1rem;
+  resize: vertical;
+  transition: border-color 0.3s;
+}
+
+textarea:focus, input[type="text"]:focus {
+  outline: none;
+  border-color: var(--gold);
+}
+
+.optional-fields {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.optional-fields input {
+  flex: 1;
+}
+
+/* دکمه‌ها */
+.btn-primary {
+  width: 100%;
+  background: linear-gradient(135deg, var(--gold), #e0a020);
+  color: #000;
+  border: none;
+  padding: 14px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(245, 185, 66, 0.4);
+}
+
+/* ناحیه آپلود ویدیو */
+.dropzone {
+  border: 2px dashed rgba(245, 185, 66, 0.4);
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-bottom: 20px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--gold);
+  background: rgba(245, 185, 66, 0.05);
+}
+
+.dropzone-icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+  display: block;
+}
+
+/* فوتر */
+.footer {
+  text-align: center;
+  padding: 24px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: auto;
+}
+
+/* --- بخش جدید: استایل کارت نتیجه حرفه‌ای --- */
+
 .result-card-pro {
-  background: rgba(20, 20, 30, 0.7);
+  background: var(--card-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(245, 185, 66, 0.2);
@@ -10,14 +222,21 @@
   padding: 24px;
   display: flex;
   gap: 24px;
-  margin-top: 20px;
+  margin-top: 30px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: slideUp 0.5s ease-out;
+  position: relative;
+  z-index: 10;
 }
 
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* بخش پوستر */
@@ -47,7 +266,7 @@
 }
 
 .poster-fallback {
-  font-size: 48px;
+  font-size: 64px;
   font-weight: 800;
   color: rgba(255, 255, 255, 0.8);
   text-transform: uppercase;
@@ -77,7 +296,7 @@
   text-align: right;
 }
 
-/* بج‌های اطلاعات (سال، نوع، اطمینان) */
+/* بج‌های اطلاعات */
 .badges-row {
   display: flex;
   flex-wrap: wrap;
@@ -103,7 +322,7 @@
   border-color: rgba(46, 196, 182, 0.3);
 }
 
-/* توضیحات (حل مشکل جهت متن) */
+/* توضیحات */
 .result-desc {
   font-size: 14px;
   line-height: 1.7;
@@ -113,7 +332,6 @@
   padding: 12px;
   border-radius: 8px;
   border-right: 3px solid var(--gold);
-  /* اگر متن انگلیسی بود چپ‌چین بشه */
 }
 
 .result-desc[dir="ltr"] {
@@ -170,8 +388,32 @@
   margin-bottom: 8px;
 }
 
+/* استایل لودر */
+.loader-container {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 30px;
+  color: var(--gold);
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(245, 185, 66, 0.2);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* ریسپانسیو برای موبایل */
 @media (max-width: 600px) {
+  .hero h1 { font-size: 1.8rem; }
   .result-card-pro {
     flex-direction: column;
     align-items: center;
@@ -180,6 +422,7 @@
   .poster-container {
     width: 140px;
     height: 210px;
+    margin-bottom: 16px;
   }
   .info-container {
     text-align: center;
@@ -195,5 +438,8 @@
     border-right: none;
     border-left: none;
     border-bottom: 2px solid var(--gold);
+  }
+  .optional-fields {
+    flex-direction: column;
   }
 }
