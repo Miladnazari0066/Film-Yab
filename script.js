@@ -132,8 +132,11 @@ function buildPrompt(text, year, country, isVideo) {
 
 // تماس با API
 async function callOpenRouter(content) {
+    let lastError = '';
+
     for (const model of cfg.MODELS) {
         try {
+            console.log(`تلاش با مدل: ${model}`);
             const res = await fetch(API_URL, {
                 method: 'POST',
                 headers: {
@@ -146,18 +149,26 @@ async function callOpenRouter(content) {
             });
 
             if (!res.ok) {
-                if (res.status === 401) throw new Error('کلید API نامعتبر است.');
-                if (res.status === 429) throw new Error('محدودیت درخواست. کمی بعد تلاش کنید.');
-                continue;
+                const errData = await res.json();
+                lastError = errData.error?.message || `خطای HTTP: ${res.status}`;
+                console.warn(`مدل ${model} خطا داد:`, lastError);
+                continue; // برو مدل بعدی
             }
 
             const data = await res.json();
-            if (data.choices && data.choices.length > 0) return data.choices[0].message.content;
+            if (data.choices && data.choices.length > 0) {
+                console.log("پاسخ دریافت شد!");
+                return data.choices[0].message.content;
+            } else {
+                lastError = "پاسخ خالی از هوش مصنوعی";
+                console.warn(`مدل ${model} پاسخ خالی داد.`);
+            }
         } catch (err) {
-            console.warn(`مدل ${model} خطا داد:`, err);
+            lastError = err.message;
+            console.error(`خطای شبکه در مدل ${model}:`, err);
         }
     }
-    throw new Error('پاسخی از هوش مصنوعی دریافت نشد. دوباره تلاش کنید.');
+    throw new Error(`هوش مصنوعی پاسخ نداد. (جزئیات: ${lastError})`);
 }
 
 // جستجوی متنی
@@ -169,11 +180,14 @@ $('btn-text').addEventListener('click', async () => {
     try {
         const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
         const rawResponse = await callOpenRouter([{ type: "text", text: prompt }]);
-        showResult(parseJson(rawResponse));
+        
+        const parsedData = parseJson(rawResponse);
+        showLoader(false); // لودر رو خاموش کن قبل از نمایش نتیجه
+        showResult(parsedData);
+        
     } catch (err) {
-        showError(err.message);
-    } finally {
         showLoader(false);
+        showError(err.message);
     }
 });
 
@@ -194,18 +208,21 @@ $('btn-video').addEventListener('click', async () => {
 
         loaderText.textContent = 'در حال تحلیل تصاویر...';
         const rawResponse = await callOpenRouter(content);
-        showResult(parseJson(rawResponse));
+        
+        const parsedData = parseJson(rawResponse);
+        showLoader(false); // لودر رو خاموش کن قبل از نمایش نتیجه
+        showResult(parsedData);
+
     } catch (err) {
-        showError(err.message);
-    } finally {
         showLoader(false);
+        showError(err.message);
     }
 });
 
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
-    resultBox.style.display = 'none';
     if (show) {
+        resultBox.style.display = 'none'; // فقط موقع شروع جستجو نتیجه قبلی رو مخفی کن
         const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو سینما...'];
         let i = 0;
         loaderText.textContent = msgs[0];
@@ -230,7 +247,8 @@ function parseJson(raw) {
         if (match) {
             try { return JSON.parse(match[0]); } catch (e2) {}
         }
-        throw new Error('پاسخ دریافتی ساختار درستی نداشت.');
+        console.error("متن دریافتی نامعتبر:", raw);
+        throw new Error('پاسخ دریافتی از هوش مصنوعی ساختار درستی نداشت (JSON نبود).');
     }
 }
 
@@ -239,8 +257,10 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-// نمایش نتیجه با استایل جدید
+// نمایش نتیجه
 function showResult(data) {
+    if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
+    
     resultBox.style.display = 'block';
     
     const titleFa = escapeHtml(data.title_fa || 'نامشخص');
@@ -251,7 +271,6 @@ function showResult(data) {
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
-    // پوستر
     let posterHtml = '';
     if (imdbID && OMDB_API_KEY !== 'YOUR_OMDB_API_KEY') {
         const posterUrl = `https://img.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`;
