@@ -5,7 +5,7 @@ if (typeof window.APP_CONFIG === 'undefined') {
 
 const cfg = window.APP_CONFIG || { OPENROUTER_API_KEY: '', MODELS: ['openrouter/free'] };
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const FRAME_COUNT = 6;
+const FRAME_COUNT = 8; // 👈 تعداد فریم‌ها از ۶ به ۸ افزایش پیدا کرد
 const FRAME_WIDTH = 512;
 
 // 🔑 کلید API شما برای OMDb
@@ -108,18 +108,36 @@ async function extractFrames(file, count = FRAME_COUNT) {
     });
 }
 
-// ساخت دستور (Prompt)
-function buildPrompt(text, year, country) {
-    return `تو یک کارشناس سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
-اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
-نام دقیق اثر (فارسی و انگلیسی)، سال، نوع (فیلم/سریال)، توضیح فارسی و آیدی IMDb را پیدا کن.
-**توجه بسیار مهم: نام فارسی فیلم را با املای کاملاً صحیح و رایج در ایران بنویس (مثلاً «بریکینگ بد» بنویس، نه «پیکینگ باد»).**
+// ساخت دستور (Prompt) هوشمند برای متن و ویدیو
+function buildPrompt(text, year, country, isVideo) {
+    if (isVideo) {
+        return `تو یک کارشناس ارشد سینما و متخصص تشخیص چهره و صحنه هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
+اطلاعات متنی همراه ویدیو: "${text || 'ندارد'}"
+
+وظیفه تو:
+1. ابتدا چهره بازیگران، لباس‌ها، فضاسازی (مکان)، نورپردازی و اشیای مهم را در تصاویر به دقت تحلیل کن.
+2. با توجه به این سرنخ‌های بصری، نام دقیق فیلم یا سریال را پیدا کن.
+3. **فقط در صورتی که ۱۰۰٪ مطمئن هستی** نام فیلم را بگو. اگر مطمئن نیستی، حتماً ۲ یا ۳ گزینه جایگزین (alternatives) بده و دلیل بصری برای هر کدام بنویس.
+4. نام فارسی اثر را با املای صحیح بنویس.
+
 خروجی را **فقط** به صورت JSON خالص (بدون بک‌تیک) با این ساختار بده:
 {
   "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
+  "imdbID": "شناسه (اگر پیدا کردی)", "confidence": "درصد اطمینان", "explanation": "توضیح اینکه چه نشانه‌های بصری باعث شد این فیلم را انتخاب کنی",
+  "alternatives": [ { "title_fa": "نام", "reason": "دلیل بصری" } ]
+}`;
+    } else {
+        return `تو یک کارشناس سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
+اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
+نام دقیق اثر (فارسی و انگلیسی)، سال، نوع (فیلم/سریال)، توضیح فارسی و آیدی IMDb را پیدا کن.
+**توجه: نام فارسی فیلم را با املای کاملاً صحیح و رایج در ایران بنویس.**
+خروجی را **فقط** به صورت JSON خالص با این ساختار بده:
+{
+  "title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع",
   "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح فارسی",
   "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
 }`;
+    }
 }
 
 // ارتباط با API
@@ -138,7 +156,7 @@ async function callOpenRouter(content) {
                     'HTTP-Referer': location.origin,
                     'X-Title': 'Film-Yab'
                 },
-                body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.1 })
+                body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.2 })
             });
 
             if (!res.ok) {
@@ -163,17 +181,15 @@ async function callOpenRouter(content) {
 // جستجوی متنی
 btnText.addEventListener('click', async () => {
     const text = storyInput.value.trim();
-    if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید (حداقل ۱۰ کاراکتر).');
+    if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید.');
 
     showLoader(true);
     try {
-        const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim());
+        const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
         const rawResponse = await callOpenRouter([{ type: "text", text: prompt }]);
-        
         const parsedData = parseJson(rawResponse);
         showLoader(false);
         await showResult(parsedData);
-        
     } catch (err) {
         showLoader(false);
         showError(err.message);
@@ -190,15 +206,14 @@ btnVideo.addEventListener('click', async () => {
     
     try {
         const frames = await extractFrames(selectedFile);
-        const caption = captionInput.value.trim() || 'این ویدیو را تحلیل کن.';
-        const prompt = buildPrompt(caption, '', '');
+        const caption = captionInput.value.trim() || '';
+        const prompt = buildPrompt(caption, '', '', true);
         
         const content = [{ type: "text", text: prompt }];
         frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
 
         loaderText.textContent = 'در حال تحلیل تصاویر...';
         const rawResponse = await callOpenRouter(content);
-        
         const parsedData = parseJson(rawResponse);
         showLoader(false);
         await showResult(parsedData);
@@ -210,7 +225,6 @@ btnVideo.addEventListener('click', async () => {
     }
 });
 
-// مدیریت لودر
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
     if (show) {
@@ -248,23 +262,18 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-// دریافت پوستر و امتیاز از OMDb
 async function fetchOMDbData(imdbID, titleEn, year) {
     if (!OMDB_API_KEY) return { poster: null, rating: null };
-    
     try {
         let url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&plot=short`;
-        
         if (imdbID && imdbID.startsWith('tt')) {
             url += `&i=${imdbID}`;
         } else {
             url += `&t=${encodeURIComponent(titleEn)}`;
             if (year && !isNaN(year)) url += `&y=${year}`;
         }
-
         const res = await fetch(url);
         const data = await res.json();
-        
         if (data.Response === 'True') {
             return {
                 poster: data.Poster !== 'N/A' ? data.Poster : null,
@@ -277,27 +286,17 @@ async function fetchOMDbData(imdbID, titleEn, year) {
     return { poster: null, rating: null };
 }
 
-// نمایش نتیجه نهایی
 async function showResult(data) {
     if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
     resultBox.style.display = 'block';
     
-    // ✅ فیلتر اصلاح اسم
     let rawTitleFa = data.title_fa || 'نامشخص';
-    rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد')
-                           .replace(/برکینگ باد/gi, 'بریکینگ بد')
-                           .replace(/بریکینگ باد/gi, 'بریکینگ بد')
-                           .replace(/گیم آف ترونز/gi, 'بازی تاج و تخت');
-
-    // حذف درصد تکراری
+    rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد').replace(/برکینگ باد/gi, 'بریکینگ بد');
     let rawConfidence = String(data.confidence || '0').replace(/[%٪]/g, '').trim();
 
     const titleFa = escapeHtml(rawTitleFa);
     const titleEn = escapeHtml(data.title_en || 'Unknown');
-    
-    // 👇 این خط برای اصلاح جهت سال (RTL) است 👇
     const year = `<span dir="ltr" style="display: inline-block;">${escapeHtml(data.year || '---')}</span>`;
-    
     const type = escapeHtml(data.type || 'نامشخص');
     const confidence = escapeHtml(rawConfidence);
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
@@ -305,17 +304,13 @@ async function showResult(data) {
     
     const omdbData = await fetchOMDbData(imdbID, data.title_en, data.year);
     
-    let posterHtml = '';
-    if (omdbData.poster) {
-        posterHtml = `<img src="${omdbData.poster}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
-    } else {
-        posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
-    }
+    let posterHtml = omdbData.poster 
+        ? `<img src="${omdbData.poster}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`
+        : `<div class="poster">${titleEn.charAt(0)}</div>`;
 
-    let imdbRatingHtml = '';
-    if (omdbData.rating) {
-        imdbRatingHtml = `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold; border: none;">⭐ IMDb: ${omdbData.rating}/10</span>`;
-    }
+    let imdbRatingHtml = omdbData.rating 
+        ? `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold; border: none;">⭐ IMDb: ${omdbData.rating}/10</span>`
+        : '';
 
     const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
     const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + data.year + ' movie')}`;
