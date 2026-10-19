@@ -1,10 +1,12 @@
+// بررسی وجود فایل config
+if (typeof window.APP_CONFIG === 'undefined') {
+    alert("خطای مهم: فایل config.js لود نشده است یا کلید API در آن وجود ندارد!");
+}
+
 const cfg = window.APP_CONFIG || { OPENROUTER_API_KEY: '', MODELS: ['openrouter/free'] };
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FRAME_COUNT = 6;
 const FRAME_WIDTH = 512;
-
-// 🔴 کلید API رایگان OMDb رو اینجا بذار (از سایت omdbapi.com بگیر)
-const OMDB_API_KEY = 'YOUR_OMDB_API_KEY'; 
 
 const $ = id => document.getElementById(id);
 
@@ -30,7 +32,6 @@ tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         tabBtns.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        
         const target = btn.dataset.tab;
         Object.keys(panels).forEach(key => {
             panels[key].classList.toggle('active', key === target);
@@ -40,7 +41,6 @@ tabBtns.forEach(btn => {
 
 let selectedFile = null;
 
-// مدیریت آپلود
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
 dropzone.addEventListener('dragleave', () => dropzone.style.borderColor = 'var(--border-color)');
@@ -71,7 +71,6 @@ function setVideoFile(file) {
     videoInfo.querySelector('.filesize').textContent = fmtSize(file.size);
 }
 
-// استخراج فریم
 async function extractFrames(file, count = FRAME_COUNT) {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
@@ -85,7 +84,6 @@ async function extractFrames(file, count = FRAME_COUNT) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             const frames = [];
-            
             video.width = video.videoWidth;
             video.height = video.videoHeight;
             const scale = Math.min(1, FRAME_WIDTH / video.videoWidth);
@@ -105,38 +103,25 @@ async function extractFrames(file, count = FRAME_COUNT) {
     });
 }
 
-// ساخت پرامپت
-function buildPrompt(text, year, country, isVideo) {
-    return `تو یک کارشناس و دایرةالمعارف سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
-اطلاعات کاربر:
-متن: "${text}"
-سال: ${year || 'نامشخص'}
-کشور: ${country || 'نامشخص'}
-
-وظیفه تو:
-نام دقیق اثر (فارسی و انگلیسی)، سال ساخت، کشور، نوع (فیلم/سریال)، و توضیح اینکه چرا این اثر با توصیف کاربر مطابقت دارد را پیدا کن.
-همچنین اگر توانستی، آیدی IMDb آن را پیدا کن (مثلاً tt0903747).
-
-خروجی را **فقط** به صورت یک آبجکت JSON خالص (بدون هیچ متن اضافه یا بک‌تیک) برگردان با این ساختار:
+function buildPrompt(text, year, country) {
+    return `تو یک کارشناس سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
+اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
+نام دقیق اثر (فارسی و انگلیسی)، سال، نوع (فیلم/سریال)، توضیح فارسی و آیدی IMDb را پیدا کن.
+خروجی را **فقط** به صورت JSON خالص (بدون بک‌تیک) با این ساختار بده:
 {
-  "title_fa": "نام فارسی",
-  "title_en": "نام انگلیسی",
-  "year": "سال ساخت",
-  "type": "فیلم یا سریال",
-  "imdbID": "شناسه IMDb",
-  "confidence": "درصد اطمینان 0 تا 100 (فقط عدد)",
-  "explanation": "توضیح کامل به فارسی",
-  "alternatives": [ { "title_fa": "نام جایگزین", "title_en": "Alt En", "reason": "دلیل" } ]
+  "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
+  "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح فارسی",
+  "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
 }`;
 }
 
-// تماس با API
 async function callOpenRouter(content) {
-    let lastError = '';
+    if (!cfg.OPENROUTER_API_KEY || cfg.OPENROUTER_API_KEY.trim() === "") {
+        throw new Error("کلید API خالی است! فایل config.js را چک کنید.");
+    }
 
     for (const model of cfg.MODELS) {
         try {
-            console.log(`تلاش با مدل: ${model}`);
             const res = await fetch(API_URL, {
                 method: 'POST',
                 headers: {
@@ -149,50 +134,48 @@ async function callOpenRouter(content) {
             });
 
             if (!res.ok) {
-                const errData = await res.json();
-                lastError = errData.error?.message || `خطای HTTP: ${res.status}`;
-                console.warn(`مدل ${model} خطا داد:`, lastError);
-                continue; // برو مدل بعدی
+                if (res.status === 401) throw new Error("کلید API معتبر نیست (401).");
+                if (res.status === 402) throw new Error("اعتبار حساب OpenRouter شما تمام شده است (402).");
+                if (res.status === 429) throw new Error("درخواست‌ها زیاد شده است. کمی صبر کنید (429).");
+                throw new Error(`خطای سرور: ${res.status}`);
             }
 
             const data = await res.json();
             if (data.choices && data.choices.length > 0) {
-                console.log("پاسخ دریافت شد!");
                 return data.choices[0].message.content;
-            } else {
-                lastError = "پاسخ خالی از هوش مصنوعی";
-                console.warn(`مدل ${model} پاسخ خالی داد.`);
             }
         } catch (err) {
-            lastError = err.message;
-            console.error(`خطای شبکه در مدل ${model}:`, err);
+            console.warn(`مدل ${model} خطا داد:`, err);
+            // اگر خطای 401 یا 402 بود، دیگه مدل بعدی رو امتحان نکن، مستقیم ارور بده
+            if (err.message.includes("401") || err.message.includes("402")) throw err;
         }
     }
-    throw new Error(`هوش مصنوعی پاسخ نداد. (جزئیات: ${lastError})`);
+    throw new Error("هیچ‌کدام از مدل‌های هوش مصنوعی پاسخ ندادند.");
 }
 
-// جستجوی متنی
-$('btn-text').addEventListener('click', async () => {
+// تابع جستجوی متنی
+btnText.addEventListener('click', async () => {
     const text = storyInput.value.trim();
     if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید (حداقل ۱۰ کاراکتر).');
 
     showLoader(true);
     try {
-        const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
+        const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim());
         const rawResponse = await callOpenRouter([{ type: "text", text: prompt }]);
         
         const parsedData = parseJson(rawResponse);
-        showLoader(false); // لودر رو خاموش کن قبل از نمایش نتیجه
+        showLoader(false);
         showResult(parsedData);
         
     } catch (err) {
         showLoader(false);
         showError(err.message);
+        alert("خطای جستجو: " + err.message); // این خط باعث میشه ارور رو با چشم ببینی
     }
 });
 
-// جستجوی ویدیویی
-$('btn-video').addEventListener('click', async () => {
+// تابع جستجوی ویدیویی
+btnVideo.addEventListener('click', async () => {
     if (!selectedFile) return showError('لطفاً ابتدا یک ویدیو انتخاب کنید.');
     
     showLoader(true);
@@ -200,30 +183,31 @@ $('btn-video').addEventListener('click', async () => {
     
     try {
         const frames = await extractFrames(selectedFile);
-        const caption = captionInput.value.trim() || 'این ویدیو را تحلیل کن و فیلم مربوطه را پیدا کن.';
-        const prompt = buildPrompt(caption, '', '', true);
+        const caption = captionInput.value.trim() || 'این ویدیو را تحلیل کن.';
+        const prompt = buildPrompt(caption, '', '');
         
         const content = [{ type: "text", text: prompt }];
         frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
 
-        loaderText.textContent = 'در حال تحلیل تصاویر...';
+        loaderText.textContent = 'در حال تحلیل...';
         const rawResponse = await callOpenRouter(content);
         
         const parsedData = parseJson(rawResponse);
-        showLoader(false); // لودر رو خاموش کن قبل از نمایش نتیجه
+        showLoader(false);
         showResult(parsedData);
 
     } catch (err) {
         showLoader(false);
         showError(err.message);
+        alert("خطای تحلیل ویدیو: " + err.message); // این خط باعث میشه ارور رو با چشم ببینی
     }
 });
 
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
     if (show) {
-        resultBox.style.display = 'none'; // فقط موقع شروع جستجو نتیجه قبلی رو مخفی کن
-        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو سینما...'];
+        resultBox.style.display = 'none';
+        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو...'];
         let i = 0;
         loaderText.textContent = msgs[0];
         const int = setInterval(() => { i = (i + 1) % msgs.length; loaderText.textContent = msgs[i]; }, 2500);
@@ -247,8 +231,8 @@ function parseJson(raw) {
         if (match) {
             try { return JSON.parse(match[0]); } catch (e2) {}
         }
-        console.error("متن دریافتی نامعتبر:", raw);
-        throw new Error('پاسخ دریافتی از هوش مصنوعی ساختار درستی نداشت (JSON نبود).');
+        // اگر هوش مصنوعی جواب عجیبی داده بود
+        throw new Error("هوش مصنوعی جواب داد، اما فرمت آن JSON نبود.");
     }
 }
 
@@ -257,10 +241,8 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-// نمایش نتیجه
 function showResult(data) {
     if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
-    
     resultBox.style.display = 'block';
     
     const titleFa = escapeHtml(data.title_fa || 'نامشخص');
@@ -271,15 +253,8 @@ function showResult(data) {
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
-    let posterHtml = '';
-    if (imdbID && OMDB_API_KEY !== 'YOUR_OMDB_API_KEY') {
-        const posterUrl = `https://img.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`;
-        posterHtml = `<img src="${posterUrl}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
-    } else {
-        posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
-    }
-
-    const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
+    let posterHtml = `<div class="poster">${titleEn.charAt(0)}</div>`;
+    const imdbLink = `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
     const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + year + ' movie')}`;
     
     const isEnglish = /^[A-Za-z\s.,!?'-]+$/.test(explanation);
@@ -299,22 +274,16 @@ function showResult(data) {
             <div class="info">
                 <h2 class="title-fa">${titleFa}</h2>
                 <div class="title-en">${titleEn} (${year})</div>
-                
                 <div class="badges">
                     <span class="badge">🎬 ${type}</span>
                     <span class="badge">📅 ${year}</span>
                     <span class="badge confidence">✓ اطمینان: ${confidence}٪</span>
                 </div>
-
-                <div class="desc" dir="${descDir}">
-                    ${explanation}
-                </div>
-
+                <div class="desc" dir="${descDir}">${explanation}</div>
                 <div class="actions">
                     <a href="${imdbLink}" target="_blank" class="btn-action btn-imdb">IMDb</a>
                     <a href="${googleLink}" target="_blank" class="btn-action btn-google">گوگل</a>
                 </div>
-                
                 ${altHtml}
             </div>
         </div>
