@@ -15,8 +15,6 @@ const $ = id => document.getElementById(id);
 const tabBtns = document.querySelectorAll('.tab-btn');
 const panels = { text: $('panel-text'), video: $('panel-video') };
 const storyInput = $('story');
-const yearInput = $('year');
-const countryInput = $('country');
 const dropzone = $('dropzone');
 const fileInput = $('file-input');
 const videoInfo = $('video-info');
@@ -27,9 +25,10 @@ const btnText = $('btn-text');
 const btnVideo = $('btn-video');
 const loader = $('loader');
 const loaderText = $('loader-text');
-const resultBox = $('result-box');
 const progressBar = $('progress-bar');
 const progressText = $('progress-text');
+const modalOverlay = $('result-modal');
+const modalBody = $('modal-body');
 
 // مدیریت تب‌ها
 tabBtns.forEach(btn => {
@@ -125,8 +124,8 @@ async function getInstagramVideoUrl(instaUrl) {
     throw new Error("ویدیو در این لینک پیدا نشد.");
 }
 
-// ساخت Prompt
-function buildPrompt(text, year, country, isVideo) {
+// ساخت Prompt بسیار هوشمند برای متن
+function buildPrompt(text, isVideo) {
     if (isVideo) {
         return `تو یک کارشناس ارشد سینما هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
 اطلاعات متنی: "${text || 'ندارد'}"
@@ -139,13 +138,14 @@ function buildPrompt(text, year, country, isVideo) {
   "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
 }`;
     } else {
-        return `تو یک کارشناس دقیق و منطقی سینما هستی. کاربر داستان یک فیلم یا سریال را تعریف کرده است.
-اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
+        return `تو یک کارشناس دقیق و منطقی سینما هستی که حافظه‌ای عالی از تمام فیلم‌ها و سریال‌های جهان داری.
+کاربر داستان یک فیلم یا سریال را تعریف کرده است: "${text}"
 
-قوانین مهم:
-1. بر اساس عناصر اصلی داستان (شخصیت‌ها، شغل‌ها، اتفاقات کلیدی) فیلم را پیدا کن.
-2. اگر داستان شبیه به یک سریال/فیلم بسیار معروف (مثل بریکینگ بد) بود، حتماً آن را در اولویت قرار بده و دنبال فیلم‌های گمنام نرو.
-3. نام فارسی اثر را دقیق بنویس.
+دستورالعمل بسیار مهم:
+1. ابتدا عناصر کلیدی داستان را در ذهن خود جدا کن (مثلاً: بازی‌های مرگبار، جایزه نقدی، کشته شدن بازنده‌ها).
+2. به دنبال معروف‌ترین و محبوب‌ترین اثری بگرد که دقیقاً با این عناصر مطابقت دارد. (مثلاً برای بازی‌های مرگبار، اول سریال Squid Game را در نظر بگیر).
+3. **به هیچ وجه گمراه نشو!** اگر داستان شبیه به یک اثر معروف جهانی است، آن را پیشنهاد بده. سراغ فیلم‌های گمنام یا بی‌ربط (مثل مرد عنکبوتی) نرو.
+4. اگر داستان مربوط به کشوری خاص بود (مثلاً کره‌ای)، حتماً آن را در اولویت قرار بده.
 
 خروجی فقط JSON خالص:
 {
@@ -156,26 +156,20 @@ function buildPrompt(text, year, country, isVideo) {
     }
 }
 
-// ⏱️ تابع دریافت با تایمر (Timeout)
 async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 7000 } = options; // ۷ ثانیه فرصت
+    const { timeout = 8000 } = options; 
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
-    const response = await fetch(resource, {
-        ...options,
-        signal: controller.signal  
-    });
+    const response = await fetch(resource, { ...options, signal: controller.signal });
     clearTimeout(id);
     return response;
 }
 
-// 🚀 سیستم Fallback هوشمند (متن جدا از عکس)
 async function callOpenRouter(content, isVideoMode = false) {
     if (!cfg.OPENROUTER_API_KEYS || cfg.OPENROUTER_API_KEYS.length === 0) {
         throw new Error("هیچ کلید API تعریف نشده است!");
     }
 
-    // انتخاب لیست مدل‌ها بر اساس نوع جستجو
     const modelsToTry = isVideoMode ? cfg.VISION_MODELS : cfg.TEXT_MODELS;
     let errorLogs = [];
 
@@ -193,17 +187,14 @@ async function callOpenRouter(content, isVideoMode = false) {
                         'HTTP-Referer': location.origin,
                         'X-Title': 'Film-Yab'
                     },
-                    // Temperature = 0 یعنی صفر خلاقیت، فقط واقعیت!
                     body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.0 }),
-                    timeout: 7000 // حداکثر ۷ ثانیه
+                    timeout: 8000 
                 });
 
                 if (!res.ok) {
                     let reason = `کد ${res.status}`;
                     if (res.status === 401) reason = "کلید نامعتبر";
-                    if (res.status === 402) reason = "اعتبار تمام شده";
                     if (res.status === 429) reason = "شلوغی";
-                    if (res.status === 400 || res.status === 413) reason = "حجم داده زیاد";
                     errorLogs.push(`${model}: ${reason}`);
                     continue; 
                 }
@@ -213,26 +204,23 @@ async function callOpenRouter(content, isVideoMode = false) {
                     return data.choices[0].message.content;
                 }
             } catch (err) {
-                // خطای Timeout یا شبکه
-                errorLogs.push(`${model}: تایم‌اوت یا قطعی`);
+                errorLogs.push(`${model}: تایم‌اوت`);
             }
         }
     }
-    
     throw new Error(`مدل‌ها پاسخ ندادند. دلیل: ${errorLogs[0] || 'نامشخص'}`);
 }
 
 // جستجوی متنی
 btnText.addEventListener('click', async () => {
     const text = storyInput.value.trim();
-    if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید.');
+    if (text.length < 10) return alert('لطفاً توضیحات بیشتری بنویسید.');
 
     showLoader(true);
     startProgress();
 
     try {
-        const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
-        // False یعنی در حالت متنی هستیم
+        const prompt = buildPrompt(text, false);
         const rawResponse = await callOpenRouter([{ type: "text", text: prompt }], false);
         const parsedData = parseJson(rawResponse);
         
@@ -246,7 +234,6 @@ btnText.addEventListener('click', async () => {
         finishProgress();
         setTimeout(() => {
             showLoader(false);
-            showError(err.message);
             alert("خطای جستجو:\n" + err.message);
         }, 400);
     }
@@ -257,7 +244,7 @@ btnVideo.addEventListener('click', async () => {
     const instaUrl = instaLinkInput.value.trim();
     
     if (!selectedFile && !instaUrl) {
-        return showError('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
+        return alert('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
     }
     
     showLoader(true);
@@ -279,13 +266,12 @@ btnVideo.addEventListener('click', async () => {
         if (!frames || frames.length === 0) throw new Error("استخراج عکس ناموفق بود.");
 
         const caption = captionInput.value.trim() || '';
-        const prompt = buildPrompt(caption, '', '', true);
+        const prompt = buildPrompt(caption, true);
         
         const content = [{ type: "text", text: prompt }];
         frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
 
         loaderText.textContent = 'در حال تحلیل تصاویر...';
-        // True یعنی در حالت ویدیویی هستیم
         const rawResponse = await callOpenRouter(content, true);
         const parsedData = parseJson(rawResponse);
         
@@ -299,7 +285,6 @@ btnVideo.addEventListener('click', async () => {
         finishProgress();
         setTimeout(() => {
             showLoader(false);
-            showError(err.message);
             alert("خطای تحلیل:\n" + err.message);
         }, 400);
     }
@@ -308,7 +293,6 @@ btnVideo.addEventListener('click', async () => {
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
     if (show) {
-        resultBox.style.display = 'none';
         const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو...'];
         let i = 0;
         loaderText.textContent = msgs[0];
@@ -343,10 +327,18 @@ function finishProgress() {
     progressText.textContent = '100%';
 }
 
-function showError(msg) {
-    resultBox.style.display = 'block';
-    resultBox.innerHTML = `<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 20px; border-radius: 16px; text-align: center; font-weight: bold; line-height: 1.6;">${escapeHtml(msg)}</div>`;
+// 🌟 مدیریت پاپ‌آپ
+function closeModal() {
+    modalOverlay.classList.remove('active');
+    setTimeout(() => {
+        modalBody.innerHTML = '';
+    }, 300); // صبر تا پایان انیمیشن
 }
+
+// بستن پاپ‌آپ با کلیک بیرون از آن
+modalOverlay.addEventListener('click', (e) => {
+    if (e.target === modalOverlay) closeModal();
+});
 
 function parseJson(raw) {
     try {
@@ -357,7 +349,7 @@ function parseJson(raw) {
         if (match) {
             try { return JSON.parse(match[0]); } catch (e2) {}
         }
-        throw new Error("هوش مصنوعی جواب داد، اما فرمت JSON نبود.");
+        throw new Error("فرمت JSON نامعتبر است.");
     }
 }
 
@@ -384,15 +376,13 @@ async function fetchOMDbData(imdbID, titleEn, year) {
                 rating: data.imdbRating !== 'N/A' ? data.imdbRating : null
             };
         }
-    } catch (e) {
-        console.warn('خطا در OMDb:', e);
-    }
+    } catch (e) {}
     return { poster: null, rating: null };
 }
 
+// نمایش نتیجه در پاپ‌آپ
 async function showResult(data) {
-    if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
-    resultBox.style.display = 'block';
+    if (!data) return alert('داده‌ای یافت نشد.');
     
     let rawTitleFa = data.title_fa || 'نامشخص';
     rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد').replace(/برکینگ باد/gi, 'بریکینگ بد');
@@ -430,7 +420,8 @@ async function showResult(data) {
         </div>`;
     }
 
-    resultBox.innerHTML = `
+    // تزریق HTML به داخل پاپ‌آپ
+    modalBody.innerHTML = `
         <div class="result-card">
             ${posterHtml}
             <div class="info">
@@ -451,4 +442,7 @@ async function showResult(data) {
             </div>
         </div>
     `;
+
+    // باز کردن پاپ‌آپ با انیمیشن
+    modalOverlay.classList.add('active');
 }
