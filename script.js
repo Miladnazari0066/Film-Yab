@@ -124,13 +124,10 @@ async function getInstagramVideoUrl(instaUrl) {
     throw new Error("ویدیو در این لینک پیدا نشد.");
 }
 
-// ساخت Prompt بسیار هوشمند برای متن
 function buildPrompt(text, isVideo) {
     if (isVideo) {
         return `تو یک کارشناس ارشد سینما هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
-اطلاعات متنی: "${text || 'ندارد'}"
 چهره بازیگران، لباس‌ها و فضاسازی را تحلیل کن و نام دقیق فیلم را بگو.
-اگر مطمئن نیستی، ۲ گزینه جایگزین بده.
 خروجی فقط JSON خالص:
 {
   "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
@@ -138,15 +135,9 @@ function buildPrompt(text, isVideo) {
   "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
 }`;
     } else {
-        return `تو یک کارشناس دقیق و منطقی سینما هستی که حافظه‌ای عالی از تمام فیلم‌ها و سریال‌های جهان داری.
-کاربر داستان یک فیلم یا سریال را تعریف کرده است: "${text}"
-
-دستورالعمل بسیار مهم:
-1. ابتدا عناصر کلیدی داستان را در ذهن خود جدا کن (مثلاً: بازی‌های مرگبار، جایزه نقدی، کشته شدن بازنده‌ها).
-2. به دنبال معروف‌ترین و محبوب‌ترین اثری بگرد که دقیقاً با این عناصر مطابقت دارد. (مثلاً برای بازی‌های مرگبار، اول سریال Squid Game را در نظر بگیر).
-3. **به هیچ وجه گمراه نشو!** اگر داستان شبیه به یک اثر معروف جهانی است، آن را پیشنهاد بده. سراغ فیلم‌های گمنام یا بی‌ربط (مثل مرد عنکبوتی) نرو.
-4. اگر داستان مربوط به کشوری خاص بود (مثلاً کره‌ای)، حتماً آن را در اولویت قرار بده.
-
+        return `تو یک کارشناس دقیق سینما هستی. کاربر داستان یک فیلم یا سریال را تعریف کرده است: "${text}"
+بهترین و معروف‌ترین فیلم یا سریالی که دقیقاً با این داستان مطابقت دارد را پیدا کن.
+(مثلاً برای بازی‌های مرگبار و جایزه نقدی، سریال Squid Game را در نظر بگیر).
 خروجی فقط JSON خالص:
 {
   "title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع",
@@ -156,13 +147,19 @@ function buildPrompt(text, isVideo) {
     }
 }
 
+// ⏱️ تایم‌اوت کاهش پیدا کرد به ۴ ثانیه برای سرعت بالا
 async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 8000 } = options; 
+    const { timeout = 4000 } = options; 
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), timeout);
-    const response = await fetch(resource, { ...options, signal: controller.signal });
-    clearTimeout(id);
-    return response;
+    try {
+        const response = await fetch(resource, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (e) {
+        clearTimeout(id);
+        throw e;
+    }
 }
 
 async function callOpenRouter(content, isVideoMode = false) {
@@ -188,7 +185,7 @@ async function callOpenRouter(content, isVideoMode = false) {
                         'X-Title': 'Film-Yab'
                     },
                     body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.0 }),
-                    timeout: 8000 
+                    timeout: 4000 // حداکثر ۴ ثانیه صبر میکنه
                 });
 
                 if (!res.ok) {
@@ -208,7 +205,7 @@ async function callOpenRouter(content, isVideoMode = false) {
             }
         }
     }
-    throw new Error(`مدل‌ها پاسخ ندادند. دلیل: ${errorLogs[0] || 'نامشخص'}`);
+    throw new Error(`مدل‌ها پاسخ ندادند. دلیل آخرین خطا: ${errorLogs[0] || 'نامشخص'}`);
 }
 
 // جستجوی متنی
@@ -327,13 +324,13 @@ function finishProgress() {
     progressText.textContent = '100%';
 }
 
-// 🌟 مدیریت پاپ‌آپ
+// بستن پاپ‌آپ
 function closeModal() {
     modalOverlay.classList.remove('active');
-    setTimeout(() => {
-        modalBody.innerHTML = '';
-    }, 300); // صبر تا پایان انیمیشن
+    setTimeout(() => { modalBody.innerHTML = ''; }, 300);
 }
+// اتصال تابع بستن به دکمه ضربدر در HTML
+window.closeModal = closeModal; 
 
 // بستن پاپ‌آپ با کلیک بیرون از آن
 modalOverlay.addEventListener('click', (e) => {
@@ -349,7 +346,7 @@ function parseJson(raw) {
         if (match) {
             try { return JSON.parse(match[0]); } catch (e2) {}
         }
-        throw new Error("فرمت JSON نامعتبر است.");
+        throw new Error("پاسخ هوش مصنوعی فرمت JSON نداشت.");
     }
 }
 
@@ -358,6 +355,7 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
+// گرفتن پوستر از OMDb (با محدودیت زمانی ۳ ثانیه تا سایت قفل نکنه)
 async function fetchOMDbData(imdbID, titleEn, year) {
     if (!OMDB_API_KEY) return { poster: null, rating: null };
     try {
@@ -368,7 +366,14 @@ async function fetchOMDbData(imdbID, titleEn, year) {
             url += `&t=${encodeURIComponent(titleEn)}`;
             if (year && !isNaN(year)) url += `&y=${year}`;
         }
-        const res = await fetch(url);
+        
+        // محدودیت زمانی برای OMDb
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); 
+        
+        const res = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
         const data = await res.json();
         if (data.Response === 'True') {
             return {
@@ -376,7 +381,9 @@ async function fetchOMDbData(imdbID, titleEn, year) {
                 rating: data.imdbRating !== 'N/A' ? data.imdbRating : null
             };
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('OMDb پاسخ نداد یا تایم‌اوت شد.');
+    }
     return { poster: null, rating: null };
 }
 
@@ -396,6 +403,7 @@ async function showResult(data) {
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
+    // گرفتن پوستر
     const omdbData = await fetchOMDbData(imdbID, data.title_en, data.year);
     
     let posterHtml = omdbData.poster 
