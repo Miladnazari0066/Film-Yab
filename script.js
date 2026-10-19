@@ -108,12 +108,12 @@ async function extractFrames(file, count = FRAME_COUNT) {
     });
 }
 
-// ساخت دستور (Prompt) برای هوش مصنوعی
+// ساخت دستور (Prompt)
 function buildPrompt(text, year, country) {
     return `تو یک کارشناس سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
 اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
 نام دقیق اثر (فارسی و انگلیسی)، سال، نوع (فیلم/سریال)، توضیح فارسی و آیدی IMDb را پیدا کن.
-**توجه بسیار مهم: نام فارسی فیلم را با املای کاملاً صحیح و رایج در ایران بنویس (مثلاً «بریکینگ بد» بنویس، نه «پیکینگ باد» یا «برکینگ باد»).**
+**توجه بسیار مهم: نام فارسی فیلم را با املای کاملاً صحیح و رایج در ایران بنویس (مثلاً «بریکینگ بد» بنویس، نه «پیکینگ باد»).**
 خروجی را **فقط** به صورت JSON خالص (بدون بک‌تیک) با این ساختار بده:
 {
   "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
@@ -122,7 +122,7 @@ function buildPrompt(text, year, country) {
 }`;
 }
 
-// ارتباط با API اوپن‌روتر
+// ارتباط با API
 async function callOpenRouter(content) {
     if (!cfg.OPENROUTER_API_KEY || cfg.OPENROUTER_API_KEY.trim() === "") {
         throw new Error("کلید API خالی است! فایل config.js را چک کنید.");
@@ -172,7 +172,7 @@ btnText.addEventListener('click', async () => {
         
         const parsedData = parseJson(rawResponse);
         showLoader(false);
-        await showResult(parsedData); // حالا await داریم چون showResult باید OMDb رو صدا بزنه
+        await showResult(parsedData);
         
     } catch (err) {
         showLoader(false);
@@ -225,13 +225,11 @@ function showLoader(show) {
     }
 }
 
-// نمایش خطا
 function showError(msg) {
     resultBox.style.display = 'block';
     resultBox.innerHTML = `<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 20px; border-radius: 16px; text-align: center; font-weight: bold;">${escapeHtml(msg)}</div>`;
 }
 
-// تبدیل پاسخ خام به JSON
 function parseJson(raw) {
     try {
         const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -245,18 +243,27 @@ function parseJson(raw) {
     }
 }
 
-// جلوگیری از تزریق کد (XSS)
 function escapeHtml(str) {
     if (!str) return '';
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-// دریافت پوستر و امتیاز از OMDb
-async function fetchOMDbData(imdbID) {
-    if (!imdbID) return { poster: null, rating: null };
+// دریافت پوستر و امتیاز از OMDb (با جستجوی هوشمند)
+async function fetchOMDbData(imdbID, titleEn, year) {
+    if (!OMDB_API_KEY) return { poster: null, rating: null };
     
     try {
-        const res = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&i=${imdbID}`);
+        let url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&plot=short`;
+        
+        // اگر آیدی IMDb معتبر بود، با آیدی سرچ کن. وگرنه با اسم انگلیسی و سال
+        if (imdbID && imdbID.startsWith('tt')) {
+            url += `&i=${imdbID}`;
+        } else {
+            url += `&t=${encodeURIComponent(titleEn)}`;
+            if (year && !isNaN(year)) url += `&y=${year}`;
+        }
+
+        const res = await fetch(url);
         const data = await res.json();
         
         if (data.Response === 'True') {
@@ -276,25 +283,28 @@ async function showResult(data) {
     if (!data) return showError('داده‌ای برای نمایش وجود ندارد.');
     resultBox.style.display = 'block';
     
-    // ✅ فیلتر هوشمند برای اصلاح غلط‌های املایی رایج هوش مصنوعی
+    // ✅ فیلتر اصلاح اسم و درصد
     let rawTitleFa = data.title_fa || 'نامشخص';
     rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد')
                            .replace(/برکینگ باد/gi, 'بریکینگ بد')
-                           .replace(/بریکینگ بد/gi, 'بریکینگ بد')
+                           .replace(/بریکینگ باد/gi, 'بریکینگ بد') // این خط اضافه شد
                            .replace(/گیم آف ترونز/gi, 'بازی تاج و تخت');
+
+    // اصلاح مشکل تکرار درصد (حذف % از خروجی هوش مصنوعی)
+    let rawConfidence = String(data.confidence || '0').replace(/[%٪]/g, '').trim();
 
     const titleFa = escapeHtml(rawTitleFa);
     const titleEn = escapeHtml(data.title_en || 'Unknown');
-    const year = escapeHtml(data.year || '---');
+    const year = escapeHtml(data.year || '');
     const type = escapeHtml(data.type || 'نامشخص');
-    const confidence = escapeHtml(data.confidence || '0');
+    const confidence = escapeHtml(rawConfidence);
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
-    // دریافت پوستر و امتیاز از OMDb
-    const omdbData = await fetchOMDbData(imdbID);
+    // دریافت اطلاعات OMDb
+    const omdbData = await fetchOMDbData(imdbID, data.title_en, data.year);
     
-    // پوستر فیلم
+    // پوستر
     let posterHtml = '';
     if (omdbData.poster) {
         posterHtml = `<img src="${omdbData.poster}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`;
@@ -305,14 +315,13 @@ async function showResult(data) {
     // امتیاز IMDb
     let imdbRatingHtml = '';
     if (omdbData.rating) {
-        imdbRatingHtml = `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold;">⭐ IMDb: ${omdbData.rating}/10</span>`;
+        imdbRatingHtml = `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold; border: none;">⭐ IMDb: ${omdbData.rating}/10</span>`;
     }
 
     // لینک‌ها
     const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
     const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + year + ' movie')}`;
     
-    // تشخیص زبان توضیحات برای رفع مشکل RTL/LTR
     const isEnglish = /^[A-Za-z\s.,!?'-]+$/.test(explanation);
     const descDir = isEnglish ? 'ltr' : 'rtl';
 
@@ -325,7 +334,7 @@ async function showResult(data) {
         </div>`;
     }
 
-    // قالب HTML کارت نتیجه
+    // قالب HTML
     resultBox.innerHTML = `
         <div class="result-card">
             ${posterHtml}
