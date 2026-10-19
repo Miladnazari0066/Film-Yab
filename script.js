@@ -1,14 +1,12 @@
 // بررسی وجود فایل config
 if (typeof window.APP_CONFIG === 'undefined') {
-    alert("خطای مهم: فایل config.js لود نشده است یا کلید API در آن وجود ندارد!");
+    alert("خطای مهم: فایل config.js لود نشده است!");
 }
 
-const cfg = window.APP_CONFIG || { OPENROUTER_API_KEYS: [], MODELS: ['openrouter/free'] };
+const cfg = window.APP_CONFIG || { OPENROUTER_API_KEYS: [], TEXT_MODELS: ['openrouter/free'], VISION_MODELS: ['openrouter/free'] };
 const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const FRAME_COUNT = 8; 
-const FRAME_WIDTH = 512;
-
-// 🔑 کلید API شما برای OMDb
+const FRAME_COUNT = 4; 
+const FRAME_WIDTH = 400;
 const OMDB_API_KEY = 'b44a4ca6';
 
 const $ = id => document.getElementById(id);
@@ -23,6 +21,7 @@ const dropzone = $('dropzone');
 const fileInput = $('file-input');
 const videoInfo = $('video-info');
 const videoPreview = $('video-preview');
+const instaLinkInput = $('insta-link');
 const captionInput = $('caption');
 const btnText = $('btn-text');
 const btnVideo = $('btn-video');
@@ -69,6 +68,7 @@ function fmtSize(bytes) {
 
 function setVideoFile(file) {
     selectedFile = file;
+    instaLinkInput.value = ''; 
     videoPreview.src = URL.createObjectURL(file);
     dropzone.style.display = 'none';
     videoInfo.style.display = 'block';
@@ -76,12 +76,18 @@ function setVideoFile(file) {
     videoInfo.querySelector('.filesize').textContent = fmtSize(file.size);
 }
 
-async function extractFrames(file, count = FRAME_COUNT) {
+async function extractFrames(source, count = FRAME_COUNT) {
     return new Promise((resolve, reject) => {
         const video = document.createElement('video');
         video.preload = 'metadata';
         video.muted = true;
-        video.src = URL.createObjectURL(file);
+        
+        if (typeof source === 'string') {
+            video.src = source;
+            video.crossOrigin = "anonymous"; 
+        } else {
+            video.src = URL.createObjectURL(source);
+        }
 
         video.onloadedmetadata = async () => {
             const dur = video.duration;
@@ -100,37 +106,48 @@ async function extractFrames(file, count = FRAME_COUNT) {
                 video.currentTime = t;
                 await new Promise(r => video.onseeked = r);
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                frames.push(canvas.toDataURL('image/jpeg', 0.7));
+                frames.push(canvas.toDataURL('image/jpeg', 0.6)); 
             }
             resolve(frames);
         };
-        video.onerror = () => reject(new Error('خطا در خواندن فایل ویدیویی.'));
+        video.onerror = () => reject(new Error('خطا در خواندن ویدیو. لینک نامعتبر است یا پروکسی مشکل دارد.'));
     });
 }
 
+async function getInstagramVideoUrl(instaUrl) {
+    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(instaUrl)}`;
+    try {
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
+        const match = html.match(/<meta property="og:video" content="([^"]+)"/) || html.match(/"video_url":"([^"]+)"/);
+        if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
+    } catch (e) { throw new Error("عدم دسترسی به اینستاگرام"); }
+    throw new Error("ویدیو در این لینک پیدا نشد.");
+}
+
+// ساخت Prompt
 function buildPrompt(text, year, country, isVideo) {
     if (isVideo) {
-        return `تو یک کارشناس ارشد سینما و متخصص تشخیص چهره و صحنه هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
-اطلاعات متنی همراه ویدیو: "${text || 'ندارد'}"
-
-وظیفه تو:
-1. ابتدا چهره بازیگران، لباس‌ها، فضاسازی (مکان)، نورپردازی و اشیای مهم را در تصاویر به دقت تحلیل کن.
-2. با توجه به این سرنخ‌های بصری، نام دقیق فیلم یا سریال را پیدا کن.
-3. **فقط در صورتی که ۱۰۰٪ مطمئن هستی** نام فیلم را بگو. اگر مطمئن نیستی، حتماً ۲ یا ۳ گزینه جایگزین (alternatives) بده و دلیل بصری برای هر کدام بنویس.
-4. نام فارسی اثر را با املای صحیح بنویس.
-
-خروجی را **فقط** به صورت JSON خالص (بدون بک‌تیک) با این ساختار بده:
+        return `تو یک کارشناس ارشد سینما هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
+اطلاعات متنی: "${text || 'ندارد'}"
+چهره بازیگران، لباس‌ها و فضاسازی را تحلیل کن و نام دقیق فیلم را بگو.
+اگر مطمئن نیستی، ۲ گزینه جایگزین بده.
+خروجی فقط JSON خالص:
 {
   "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
-  "imdbID": "شناسه (اگر پیدا کردی)", "confidence": "درصد اطمینان", "explanation": "توضیح اینکه چه نشانه‌های بصری باعث شد این فیلم را انتخاب کنی",
-  "alternatives": [ { "title_fa": "نام", "reason": "دلیل بصری" } ]
+  "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح بصری",
+  "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
 }`;
     } else {
-        return `تو یک کارشناس سینما هستی. کاربر در حال توصیف یک فیلم یا سریال است.
+        return `تو یک کارشناس دقیق و منطقی سینما هستی. کاربر داستان یک فیلم یا سریال را تعریف کرده است.
 اطلاعات کاربر: متن: "${text}" | سال: ${year || 'نامشخص'} | کشور: ${country || 'نامشخص'}
-نام دقیق اثر (فارسی و انگلیسی)، سال، نوع (فیلم/سریال)، توضیح فارسی و آیدی IMDb را پیدا کن.
-**توجه: نام فارسی فیلم را با املای کاملاً صحیح و رایج در ایران بنویس.**
-خروجی را **فقط** به صورت JSON خالص با این ساختار بده:
+
+قوانین مهم:
+1. بر اساس عناصر اصلی داستان (شخصیت‌ها، شغل‌ها، اتفاقات کلیدی) فیلم را پیدا کن.
+2. اگر داستان شبیه به یک سریال/فیلم بسیار معروف (مثل بریکینگ بد) بود، حتماً آن را در اولویت قرار بده و دنبال فیلم‌های گمنام نرو.
+3. نام فارسی اثر را دقیق بنویس.
+
+خروجی فقط JSON خالص:
 {
   "title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع",
   "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح فارسی",
@@ -139,19 +156,36 @@ function buildPrompt(text, year, country, isVideo) {
     }
 }
 
-// 🚀 سیستم Fallback چند لایه
-async function callOpenRouter(content) {
+// ⏱️ تابع دریافت با تایمر (Timeout)
+async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 7000 } = options; // ۷ ثانیه فرصت
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    const response = await fetch(resource, {
+        ...options,
+        signal: controller.signal  
+    });
+    clearTimeout(id);
+    return response;
+}
+
+// 🚀 سیستم Fallback هوشمند (متن جدا از عکس)
+async function callOpenRouter(content, isVideoMode = false) {
     if (!cfg.OPENROUTER_API_KEYS || cfg.OPENROUTER_API_KEYS.length === 0) {
-        throw new Error("هیچ کلید API در config.js تعریف نشده است!");
+        throw new Error("هیچ کلید API تعریف نشده است!");
     }
 
-    for (const model of cfg.MODELS) {
+    // انتخاب لیست مدل‌ها بر اساس نوع جستجو
+    const modelsToTry = isVideoMode ? cfg.VISION_MODELS : cfg.TEXT_MODELS;
+    let errorLogs = [];
+
+    for (const model of modelsToTry) {
         for (let i = 0; i < cfg.OPENROUTER_API_KEYS.length; i++) {
             const apiKey = cfg.OPENROUTER_API_KEYS[i];
             if (!apiKey || apiKey.trim() === "") continue;
 
             try {
-                const res = await fetch(API_URL, {
+                const res = await fetchWithTimeout(API_URL, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${apiKey}`,
@@ -159,11 +193,18 @@ async function callOpenRouter(content) {
                         'HTTP-Referer': location.origin,
                         'X-Title': 'Film-Yab'
                     },
-                    body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.2 })
+                    // Temperature = 0 یعنی صفر خلاقیت، فقط واقعیت!
+                    body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.0 }),
+                    timeout: 7000 // حداکثر ۷ ثانیه
                 });
 
                 if (!res.ok) {
-                    console.warn(`مدل ${model} با کلید ${i + 1} خطا داد. کد: ${res.status}`);
+                    let reason = `کد ${res.status}`;
+                    if (res.status === 401) reason = "کلید نامعتبر";
+                    if (res.status === 402) reason = "اعتبار تمام شده";
+                    if (res.status === 429) reason = "شلوغی";
+                    if (res.status === 400 || res.status === 413) reason = "حجم داده زیاد";
+                    errorLogs.push(`${model}: ${reason}`);
                     continue; 
                 }
 
@@ -172,11 +213,13 @@ async function callOpenRouter(content) {
                     return data.choices[0].message.content;
                 }
             } catch (err) {
-                console.warn(`خطای شبکه در مدل ${model} با کلید ${i + 1}:`, err);
+                // خطای Timeout یا شبکه
+                errorLogs.push(`${model}: تایم‌اوت یا قطعی`);
             }
         }
     }
-    throw new Error("متاسفانه تمام مدل‌ها و کلیدها تلاش شدند اما هیچ پاسخی دریافت نشد. لطفاً کمی بعد دوباره تلاش کنید.");
+    
+    throw new Error(`مدل‌ها پاسخ ندادند. دلیل: ${errorLogs[0] || 'نامشخص'}`);
 }
 
 // جستجوی متنی
@@ -185,39 +228,56 @@ btnText.addEventListener('click', async () => {
     if (text.length < 10) return showError('لطفاً توضیحات بیشتری بنویسید.');
 
     showLoader(true);
-    startProgress(); // 👈 شروع نوار پیشرفت
+    startProgress();
 
     try {
         const prompt = buildPrompt(text, yearInput.value.trim(), countryInput.value.trim(), false);
-        const rawResponse = await callOpenRouter([{ type: "text", text: prompt }]);
+        // False یعنی در حالت متنی هستیم
+        const rawResponse = await callOpenRouter([{ type: "text", text: prompt }], false);
         const parsedData = parseJson(rawResponse);
         
-        finishProgress(); // 👈 پر کردن نهایی نوار
+        finishProgress();
         setTimeout(async () => {
             showLoader(false);
             await showResult(parsedData);
-        }, 400); // ۴۰۰ میلی‌ثانیه صبر می‌کنیم تا کاربر پر شدن نوار رو ببینه
+        }, 400);
 
     } catch (err) {
         finishProgress();
         setTimeout(() => {
             showLoader(false);
             showError(err.message);
-            alert("خطای جستجو: " + err.message);
+            alert("خطای جستجو:\n" + err.message);
         }, 400);
     }
 });
 
 // جستجوی ویدیویی
 btnVideo.addEventListener('click', async () => {
-    if (!selectedFile) return showError('لطفاً ابتدا یک ویدیو انتخاب کنید.');
+    const instaUrl = instaLinkInput.value.trim();
+    
+    if (!selectedFile && !instaUrl) {
+        return showError('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
+    }
     
     showLoader(true);
-    startProgress(); // 👈 شروع نوار پیشرفت
+    startProgress();
     
     try {
-        loaderText.textContent = 'در حال استخراج فریم‌ها...';
-        const frames = await extractFrames(selectedFile);
+        let frames = [];
+        
+        if (instaUrl) {
+            loaderText.textContent = 'در حال دریافت اطلاعات از اینستاگرام...';
+            const videoUrl = await getInstagramVideoUrl(instaUrl);
+            loaderText.textContent = 'در حال استخراج فریم‌ها از لینک...';
+            frames = await extractFrames(videoUrl);
+        } else if (selectedFile) {
+            loaderText.textContent = 'در حال استخراج فریم‌ها از فایل...';
+            frames = await extractFrames(selectedFile);
+        }
+        
+        if (!frames || frames.length === 0) throw new Error("استخراج عکس ناموفق بود.");
+
         const caption = captionInput.value.trim() || '';
         const prompt = buildPrompt(caption, '', '', true);
         
@@ -225,10 +285,11 @@ btnVideo.addEventListener('click', async () => {
         frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
 
         loaderText.textContent = 'در حال تحلیل تصاویر...';
-        const rawResponse = await callOpenRouter(content);
+        // True یعنی در حالت ویدیویی هستیم
+        const rawResponse = await callOpenRouter(content, true);
         const parsedData = parseJson(rawResponse);
         
-        finishProgress(); // 👈 پر کردن نهایی نوار
+        finishProgress();
         setTimeout(async () => {
             showLoader(false);
             await showResult(parsedData);
@@ -239,17 +300,16 @@ btnVideo.addEventListener('click', async () => {
         setTimeout(() => {
             showLoader(false);
             showError(err.message);
-            alert("خطای تحلیل ویدیو: " + err.message);
+            alert("خطای تحلیل:\n" + err.message);
         }, 400);
     }
 });
 
-// مدیریت لودر
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
     if (show) {
         resultBox.style.display = 'none';
-        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو سینما...'];
+        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو...'];
         let i = 0;
         loaderText.textContent = msgs[0];
         const int = setInterval(() => { i = (i + 1) % msgs.length; loaderText.textContent = msgs[i]; }, 3000);
@@ -259,7 +319,6 @@ function showLoader(show) {
     }
 }
 
-// 🟢 توابع شبیه‌سازی نوار پیشرفت
 let progressInterval;
 let currentProgress = 0;
 
@@ -270,7 +329,6 @@ function startProgress() {
     progressText.textContent = '0%';
 
     progressInterval = setInterval(() => {
-        // تا ۹۰٪ میره جلو، هر چی نزدیک‌تر، آهسته‌تر
         if (currentProgress < 90) {
             currentProgress += Math.max(0.5, (90 - currentProgress) * 0.05);
             progressBar.style.width = `${currentProgress}%`;
@@ -287,7 +345,7 @@ function finishProgress() {
 
 function showError(msg) {
     resultBox.style.display = 'block';
-    resultBox.innerHTML = `<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 20px; border-radius: 16px; text-align: center; font-weight: bold;">${escapeHtml(msg)}</div>`;
+    resultBox.innerHTML = `<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 20px; border-radius: 16px; text-align: center; font-weight: bold; line-height: 1.6;">${escapeHtml(msg)}</div>`;
 }
 
 function parseJson(raw) {
@@ -299,7 +357,7 @@ function parseJson(raw) {
         if (match) {
             try { return JSON.parse(match[0]); } catch (e2) {}
         }
-        throw new Error("هوش مصنوعی جواب داد، اما فرمت آن JSON نبود.");
+        throw new Error("هوش مصنوعی جواب داد، اما فرمت JSON نبود.");
     }
 }
 
@@ -327,7 +385,7 @@ async function fetchOMDbData(imdbID, titleEn, year) {
             };
         }
     } catch (e) {
-        console.warn('خطا در دریافت اطلاعات OMDb:', e);
+        console.warn('خطا در OMDb:', e);
     }
     return { poster: null, rating: null };
 }
