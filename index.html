@@ -40,9 +40,23 @@
         @keyframes floatOrb1 { 0% { transform: translate(0, 0); } 100% { transform: translate(-50px, 50px); } }
         @keyframes floatOrb2 { 0% { transform: translate(0, 0); } 100% { transform: translate(60px, -40px); } }
 
-        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; width: 100%; flex: 1; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px 20px 40px; width: 100%; flex: 1; }
 
-        .header { text-align: center; margin-bottom: 30px; }
+        .header { text-align: center; margin-bottom: 20px; position: relative; }
+        
+        /* 👇 بخش دکمه ورود 👇 */
+        .login-container {
+            position: absolute; top: 0; left: 0;
+        }
+        .btn-login {
+            background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+            color: var(--text-muted); padding: 8px 16px; border-radius: 20px;
+            cursor: pointer; font-size: 0.85rem; font-weight: 700; transition: 0.3s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn-login:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-login.logged-in { color: var(--secondary-glow); border-color: var(--secondary-glow); }
+
         .header h1 {
             font-size: 2.5rem; font-weight: 800; margin-bottom: 10px;
             background: linear-gradient(135deg, #fff, #a78bfa);
@@ -119,12 +133,20 @@
         .progress-container { width: 80%; max-width: 300px; height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; margin: 15px auto 5px; overflow: hidden; }
         .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary-glow), var(--secondary-glow)); transition: width 0.2s; }
 
+        /* پاپ‌آپ‌ها */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
         .modal-overlay.active { display: flex; opacity: 1; }
         .modal-content { background: var(--surface-color); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; width: 92%; max-width: 750px; max-height: 90vh; overflow-y: auto; position: relative; transform: scale(0.9); opacity: 0; transition: 0.3s; }
         .modal-overlay.active .modal-content { transform: scale(1); opacity: 1; }
         .close-modal { position: absolute; top: 15px; left: 15px; background: rgba(255,255,255,0.1); border: none; color: white; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 20px; z-index: 10; display: flex; align-items: center; justify-content: center; }
         
+        /* استایل مخصوص پاپ‌آپ ورود */
+        #auth-modal .modal-content { max-width: 400px; padding: 30px; text-align: center; }
+        #auth-modal h2 { margin-bottom: 20px; color: #fff; }
+        #auth-modal input { text-align: center; margin-bottom: 15px; }
+        .auth-actions { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-cancel { background: rgba(255,255,255,0.1); color: #fff; border: none; border-radius: 12px; padding: 14px; flex: 1; cursor: pointer; font-weight: bold; }
+
         .result-card { padding: 25px; display: flex; gap: 20px; }
         .poster-container { position: relative; flex-shrink: 0; }
         .poster { width: 160px; height: 240px; border-radius: 16px; object-fit: cover; background: linear-gradient(135deg, #1e1e2f, #0a0a12); display: flex; align-items: center; justify-content: center; font-size: 3rem; }
@@ -143,12 +165,16 @@
         .providers-list { display: flex; gap: 10px; flex-wrap: wrap; }
         .provider-logo { width: 40px; height: 40px; border-radius: 10px; object-fit: cover; border: 1px solid rgba(255,255,255,0.1); }
 
-        .actions { display: flex; gap: 10px; margin-top: auto; }
-        .btn-action { padding: 10px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 0.9rem; text-align: center; flex: 1; border: none; cursor: pointer; transition: 0.3s;}
+        .actions { display: flex; gap: 10px; margin-top: auto; flex-wrap: wrap; }
+        .btn-action { padding: 10px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 0.9rem; text-align: center; flex: 1; border: none; cursor: pointer; transition: 0.3s; min-width: 100px;}
         .btn-action:hover { transform: translateY(-2px); }
         .btn-imdb { background: #f5c518; color: #000; }
         .btn-google { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
         
+        /* 👇 استایل دکمه کپی 👇 */
+        .btn-copy { background: rgba(46, 196, 182, 0.15); color: var(--secondary-glow); border: 1px solid rgba(46, 196, 182, 0.3); flex-basis: 100%; }
+        .btn-copy:hover { background: rgba(46, 196, 182, 0.25); }
+
         .footer { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.9rem; }
 
         @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -159,6 +185,8 @@
             .info { text-align: center; width: 100%; }
             .badges { justify-content: center; }
             .desc { border-right: none; border-bottom: 3px solid var(--secondary-glow); }
+            .title-en { text-align: center; }
+            .actions { justify-content: center; }
         }
     </style>
 </head>
@@ -168,6 +196,9 @@
 
     <div class="container">
         <header class="header">
+            <div class="login-container">
+                <button class="btn-login" id="login-btn" onclick="openAuthModal()">👤 ورود</button>
+            </div>
             <h1>فیلم‌یاب</h1>
             <p>داستانش رو بگو، فیلمش رو پیدا کن!</p>
         </header>
@@ -252,6 +283,7 @@
 
     <footer class="footer"><p>ساخته‌شده با ❤️</p></footer>
 
+    <!-- پاپ‌آپ نتیجه -->
     <div class="modal-overlay" id="result-modal">
         <div class="modal-content">
             <button class="close-modal" onclick="closeModal()">×</button>
@@ -259,7 +291,19 @@
         </div>
     </div>
 
-    <!-- 👇 defer اضافه شد تا مطمئن شویم بعد از لود کامل DOM اجرا می‌شود -->
+    <!-- پاپ‌آپ ورود -->
+    <div class="modal-overlay" id="auth-modal">
+        <div class="modal-content">
+            <h2>ورود به فیلم‌یاب</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">یک نام برای خودت انتخاب کن تا علاقه‌مندی‌هات ذخیره بشن.</p>
+            <input type="text" id="username-input" placeholder="نام شما (مثلاً: میلاد)">
+            <div class="auth-actions">
+                <button class="btn-primary" style="margin-top: 0;" onclick="handleLogin()">ورود</button>
+                <button class="btn-cancel" onclick="closeAuthModal()">انصراف</button>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js" defer></script>
 </body>
 </html>
