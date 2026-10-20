@@ -1,527 +1,297 @@
-// بررسی وجود فایل config
-if (typeof window.APP_CONFIG === 'undefined') {
-    alert("خطای مهم: فایل config.js لود نشده است!");
-}
-
-const cfg = window.APP_CONFIG || { OPENROUTER_API_KEYS: [], TEXT_MODELS: ['openrouter/free'], VISION_MODELS: ['openrouter/free'] };
-const API_URL = "https://openrouter.ai/api/v1/chat/completions";
-const FRAME_COUNT = 4; 
-const FRAME_WIDTH = 400;
-const OMDB_API_KEY = 'b44a4ca6';
-const TMDB_API_KEY = '0d6b2e67010cce1ffb27d958cb1bc152'; // 🔑 کلید TMDB شما
-
-const $ = id => document.getElementById(id);
-
-// المان‌ها
-const tabBtns = document.querySelectorAll('.tab-btn');
-const panels = { 
-    text: $('panel-text'), 
-    video: $('panel-video'),
-    trending: $('panel-trending')
-};
-const storyInput = $('story');
-const dropzone = $('dropzone');
-const fileInput = $('file-input');
-const videoInfo = $('video-info');
-const videoPreview = $('video-preview');
-const instaLinkInput = $('insta-link');
-const captionInput = $('caption');
-const btnText = $('btn-text');
-const btnVideo = $('btn-video');
-const loader = $('loader');
-const loaderText = $('loader-text');
-const progressBar = $('progress-bar');
-const progressText = $('progress-text');
-const modalOverlay = $('result-modal');
-const modalBody = $('modal-body');
-const trendingList = $('trending-list');
-
-let hasLoadedTrending = false; // برای اینکه هر بار کلیک دوباره لود نشه
-
-// مدیریت تب‌ها
-tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-        tabBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        const target = btn.dataset.tab;
-        Object.keys(panels).forEach(key => {
-            panels[key].classList.toggle('active', key === target);
-        });
-
-        // اگر روی تب پیشنهاد امروز کلیک شد و قبلا لود نشده بود
-        if (target === 'trending' && !hasLoadedTrending) {
-            loadTrending();
-        }
-    });
-});
-
-// ================= 🎬 بخش پیشنهاد امروز (TMDB) =================
-
-async function fetchTMDB(endpoint) {
-    try {
-        const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}&language=fa-IR&page=1`);
-        const data = await res.json();
-        return data.results || [];
-    } catch (e) {
-        return [];
-    }
-}
-
-async function loadTrending() {
-    trendingList.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
-    
-    // گرفتن ۳ لیست مختلف برای تنوع بالا
-    const [trending, upcoming, tvShows] = await Promise.all([
-        fetchTMDB('trending/all/day'),
-        fetchTMDB('movie/upcoming'),
-        fetchTMDB('tv/popular')
-    ]);
-
-    // ترکیب همه، حذف تکراری‌ها و فیلتر کردن اشخاص (Actor)
-    const combined = [...trending, ...upcoming, ...tvShows].filter(item => item.media_type !== 'person');
-    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values()).slice(0, 30); // نمایش ۳۰ مورد برتر
-
-    if (unique.length === 0) {
-        trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات از TMDB.</p>';
-        return;
-    }
-
-    hasLoadedTrending = true;
-    trendingList.innerHTML = unique.map(m => {
-        const title = m.title || m.name || 'بدون نام';
-        const originalTitle = m.original_title || m.original_name || '';
-        const year = (m.release_date || m.first_air_date || '').split('-')[0] || '---';
-        const poster = m.poster_path ? `https://image.tmdb.org/t/p/w200${m.poster_path}` : '';
-        const rating = m.vote_average ? m.vote_average.toFixed(1) : '0.0';
-        const type = m.media_type === 'tv' ? 'سریال' : 'فیلم';
-        
-        // لینک گوگل برای دیدن اطلاعات بیشتر
-        const link = `https://www.google.com/search?q=${encodeURIComponent(title + ' ' + year + ' movie')}`;
-
-        return `
-            <a href="${link}" target="_blank" class="trending-item">
-                ${poster 
-                    ? `<img src="${poster}" class="trending-poster" alt="${title}" loading="lazy">` 
-                    : `<div class="trending-poster" style="display:flex; align-items:center; justify-content:center; font-size:20px;">🎬</div>`
-                }
-                <div class="trending-info">
-                    <div class="trending-title">${title}</div>
-                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px;" dir="ltr">${originalTitle}</div>
-                    <div class="trending-meta">
-                        <span>📅 ${year}</span>
-                        <span style="color:var(--gold);">⭐ ${rating}</span>
-                        <span>🎬 ${type}</span>
-                    </div>
-                </div>
-                <div style="color: var(--secondary-glow); font-size: 1.5rem; padding-left: 10px;">←</div>
-            </a>
-        `;
-    }).join('');
-}
-
-// ================= 📝 جستجوی متنی =================
-btnText.addEventListener('click', async () => {
-    const text = storyInput.value.trim();
-    if (text.length < 10) return alert('لطفاً توضیحات بیشتری بنویسید.');
-
-    showLoader(true);
-    startProgress();
-
-    try {
-        const prompt = buildPrompt(text, false);
-        const rawResponse = await callOpenRouter([{ type: "text", text: prompt }], false);
-        const parsedData = parseJson(rawResponse);
-        
-        finishProgress();
-        setTimeout(async () => {
-            showLoader(false);
-            await showResult(parsedData);
-        }, 400);
-
-    } catch (err) {
-        finishProgress();
-        setTimeout(() => {
-            showLoader(false);
-            alert("خطای جستجو:\n" + err.message);
-        }, 400);
-    }
-});
-
-// ================= 📹 جستجوی ویدیویی =================
-btnVideo.addEventListener('click', async () => {
-    const instaUrl = instaLinkInput.value.trim();
-    
-    if (!selectedFile && !instaUrl) {
-        return alert('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
-    }
-    
-    showLoader(true);
-    startProgress();
-    
-    try {
-        let frames = [];
-        
-        if (instaUrl) {
-            loaderText.textContent = 'در حال دریافت اطلاعات از اینستاگرام...';
-            const videoUrl = await getInstagramVideoUrl(instaUrl);
-            loaderText.textContent = 'در حال استخراج فریم‌ها از لینک...';
-            frames = await extractFrames(videoUrl);
-        } else if (selectedFile) {
-            loaderText.textContent = 'در حال استخراج فریم‌ها از فایل...';
-            frames = await extractFrames(selectedFile);
-        }
-        
-        if (!frames || frames.length === 0) throw new Error("استخراج عکس ناموفق بود.");
-
-        const caption = captionInput.value.trim() || '';
-        const prompt = buildPrompt(caption, true);
-        
-        const content = [{ type: "text", text: prompt }];
-        frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
-
-        loaderText.textContent = 'در حال تحلیل تصاویر...';
-        const rawResponse = await callOpenRouter(content, true);
-        const parsedData = parseJson(rawResponse);
-        
-        finishProgress();
-        setTimeout(async () => {
-            showLoader(false);
-            await showResult(parsedData);
-        }, 400);
-
-    } catch (err) {
-        finishProgress();
-        setTimeout(() => {
-            showLoader(false);
-            alert("خطای تحلیل:\n" + err.message);
-        }, 400);
-    }
-});
-
-// ================= توابع کمکی =================
-
-let selectedFile = null;
-
-dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
-dropzone.addEventListener('dragleave', () => dropzone.style.borderColor = 'var(--border-color)');
-dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropzone.style.borderColor = 'var(--border-color)';
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('video/')) setVideoFile(file);
-    else alert('لطفاً یک فایل ویدیویی معتبر انتخاب کنید.');
-});
-
-fileInput.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (file) setVideoFile(file);
-});
-
-function fmtSize(bytes) {
-    const mb = bytes / (1024 * 1024);
-    return mb >= 1 ? mb.toFixed(1) + ' MB' : (bytes / 1024).toFixed(0) + ' KB';
-}
-
-function setVideoFile(file) {
-    selectedFile = file;
-    instaLinkInput.value = ''; 
-    videoPreview.src = URL.createObjectURL(file);
-    dropzone.style.display = 'none';
-    videoInfo.style.display = 'block';
-    videoInfo.querySelector('.filename').textContent = file.name;
-    videoInfo.querySelector('.filesize').textContent = fmtSize(file.size);
-}
-
-async function extractFrames(source, count = FRAME_COUNT) {
-    return new Promise((resolve, reject) => {
-        const video = document.createElement('video');
-        video.preload = 'metadata';
-        video.muted = true;
-        
-        if (typeof source === 'string') {
-            video.src = source;
-            video.crossOrigin = "anonymous"; 
-        } else {
-            video.src = URL.createObjectURL(source);
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>فیلم‌یاب | جستجوی هوشمند فیلم</title>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #050508;
+            --surface-color: rgba(25, 25, 35, 0.85);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary-glow: #7c3aed;
+            --secondary-glow: #06b6d4;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
         }
 
-        video.onloadedmetadata = async () => {
-            const dur = video.duration;
-            if (!isFinite(dur) || dur <= 0) return reject(new Error('مدت ویدیو نامعتبر است.'));
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const frames = [];
-            video.width = video.videoWidth;
-            video.height = video.videoHeight;
-            const scale = Math.min(1, FRAME_WIDTH / video.videoWidth);
-            canvas.width = Math.round(video.videoWidth * scale);
-            canvas.height = Math.round(video.videoHeight * scale);
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; }
 
-            for (let i = 0; i < count; i++) {
-                const t = dur * (i + 0.5) / count;
-                video.currentTime = t;
-                await new Promise(r => video.onseeked = r);
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                frames.push(canvas.toDataURL('image/jpeg', 0.6)); 
-            }
-            resolve(frames);
-        };
-        video.onerror = () => reject(new Error('خطا در خواندن ویدیو. لینک نامعتبر است یا پروکسی مشکل دارد.'));
-    });
-}
-
-async function getInstagramVideoUrl(instaUrl) {
-    const workerBase = 'https://in.seetectools.workers.dev'; 
-    try {
-        const res = await fetch(`${workerBase}?url=${encodeURIComponent(instaUrl)}`);
-        const text = await res.text();
-        let data;
-        try { data = JSON.parse(text); } catch (e) { throw new Error("پاسخ نامعتبر از سرور"); }
-
-        if (data.error) throw new Error(data.error);
-        if (data.videoUrl) return data.videoUrl;
-        throw new Error('ویدیویی یافت نشد.');
-    } catch (error) {
-        throw new Error(`دریافت ویدیو ممکن نشد: ${error.message}`);
-    }
-}
-
-function buildPrompt(text, isVideo) {
-    if (isVideo) {
-        return `تو یک کارشناس ارشد سینما هستی. من ${FRAME_COUNT} تصویر از یک ویدیو را به تو می‌دهم.
-چهره بازیگران، لباس‌ها و فضاسازی را تحلیل کن و نام دقیق فیلم را بگو.
-خروجی فقط JSON خالص:
-{
-  "title_fa": "نام فارسی", "title_en": "نام انگلیسی", "year": "سال", "type": "نوع",
-  "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح بصری",
-  "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
-}`;
-    } else {
-        return `تو یک کارشناس دقیق سینما هستی. کاربر داستان یک فیلم یا سریال را تعریف کرده است: "${text}"
-بهترین و معروف‌ترین فیلم یا سریالی که دقیقاً با این داستان مطابقت دارد را پیدا کن.
-خروجی فقط JSON خالص:
-{
-  "title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع",
-  "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح فارسی",
-  "alternatives": [ { "title_fa": "نام", "reason": "دلیل" } ]
-}`;
-    }
-}
-
-async function fetchWithTimeout(resource, options = {}) {
-    const { timeout = 4000 } = options; 
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    try {
-        const response = await fetch(resource, { ...options, signal: controller.signal });
-        clearTimeout(id);
-        return response;
-    } catch (e) {
-        clearTimeout(id);
-        throw e;
-    }
-}
-
-async function callOpenRouter(content, isVideoMode = false) {
-    if (!cfg.OPENROUTER_API_KEYS || cfg.OPENROUTER_API_KEYS.length === 0) {
-        throw new Error("هیچ کلید API تعریف نشده است!");
-    }
-
-    const modelsToTry = isVideoMode ? cfg.VISION_MODELS : cfg.TEXT_MODELS;
-    let errorLogs = [];
-
-    for (const model of modelsToTry) {
-        for (let i = 0; i < cfg.OPENROUTER_API_KEYS.length; i++) {
-            const apiKey = cfg.OPENROUTER_API_KEYS[i];
-            if (!apiKey || apiKey.trim() === "") continue;
-
-            try {
-                const res = await fetchWithTimeout(API_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json',
-                        'HTTP-Referer': location.origin,
-                        'X-Title': 'Film-Yab'
-                    },
-                    body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.0 }),
-                    timeout: 4000
-                });
-
-                if (!res.ok) {
-                    let reason = `کد ${res.status}`;
-                    if (res.status === 401) reason = "کلید نامعتبر";
-                    if (res.status === 429) reason = "شلوغی";
-                    errorLogs.push(`${model}: ${reason}`);
-                    continue; 
-                }
-
-                const data = await res.json();
-                if (data.choices && data.choices.length > 0) {
-                    return data.choices[0].message.content;
-                }
-            } catch (err) {
-                errorLogs.push(`${model}: تایم‌اوت`);
-            }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            position: relative;
+            padding-bottom: 60px; 
         }
-    }
-    throw new Error(`مدل‌ها پاسخ ندادند. دلیل: ${errorLogs[0] || 'نامشخص'}`);
-}
 
-function showLoader(show) {
-    loader.style.display = show ? 'block' : 'none';
-    if (show) {
-        const msgs = ['در حال آماده‌سازی...', 'در حال تحلیل...', 'جستجو در آرشیو...'];
-        let i = 0;
-        loaderText.textContent = msgs[0];
-        const int = setInterval(() => { i = (i + 1) % msgs.length; loaderText.textContent = msgs[i]; }, 3000);
-        loader.dataset.interval = int;
-    } else {
-        clearInterval(loader.dataset.interval);
-    }
-}
-
-let progressInterval;
-let currentProgress = 0;
-
-function startProgress() {
-    clearInterval(progressInterval);
-    currentProgress = 0;
-    progressBar.style.width = '0%';
-    progressText.textContent = '0%';
-
-    progressInterval = setInterval(() => {
-        if (currentProgress < 90) {
-            currentProgress += Math.max(0.5, (90 - currentProgress) * 0.05);
-            progressBar.style.width = `${currentProgress}%`;
-            progressText.textContent = `${Math.round(currentProgress)}%`;
+        .bg-glow-1, .bg-glow-2 {
+            position: fixed; width: 600px; height: 600px; border-radius: 50%;
+            filter: blur(120px); z-index: -1; opacity: 0.15; pointer-events: none;
         }
-    }, 150);
-}
+        .bg-glow-1 { top: -200px; right: -200px; background: var(--primary-glow); }
+        .bg-glow-2 { bottom: -200px; left: -200px; background: var(--secondary-glow); }
 
-function finishProgress() {
-    clearInterval(progressInterval);
-    progressBar.style.width = '100%';
-    progressText.textContent = '100%';
-}
+        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; width: 100%; flex: 1; }
 
-function closeModal() {
-    modalOverlay.classList.remove('active');
-    setTimeout(() => { modalBody.innerHTML = ''; }, 300);
-}
-window.closeModal = closeModal; 
-
-modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closeModal();
-});
-
-function parseJson(raw) {
-    try {
-        const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
-        return JSON.parse(clean);
-    } catch (e) {
-        const match = raw.match(/\{[\s\S]*\}/);
-        if (match) {
-            try { return JSON.parse(match[0]); } catch (e2) {}
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 {
+            font-size: 2.5rem; font-weight: 800; margin-bottom: 10px;
+            background: linear-gradient(135deg, #fff, #a78bfa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
         }
-        throw new Error("پاسخ هوش مصنوعی فرمت JSON نداشت.");
-    }
-}
+        .header p { color: var(--text-muted); font-size: 1.1rem; }
 
-function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
-}
-
-async function fetchOMDbData(imdbID, titleEn, year) {
-    if (!OMDB_API_KEY) return { poster: null, rating: null };
-    try {
-        let url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&plot=short`;
-        if (imdbID && imdbID.startsWith('tt')) {
-            url += `&i=${imdbID}`;
-        } else {
-            url += `&t=${encodeURIComponent(titleEn)}`;
-            if (year && !isNaN(year)) url += `&y=${year}`;
+        .tabs-container {
+            display: flex; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color);
+            border-radius: 50px; padding: 5px; margin-bottom: 30px; backdrop-filter: blur(10px);
         }
+        .tab-btn {
+            flex: 1; background: transparent; border: none; color: var(--text-muted);
+            padding: 10px 5px; border-radius: 40px; cursor: pointer; font-size: 0.9rem; font-weight: 700;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 5px;
+        }
+        .tab-btn svg { width: 16px; height: 16px; }
+        .tab-btn.active { background: rgba(255, 255, 255, 0.1); color: #fff; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); }
+        .tab-btn:hover:not(.active) { color: #fff; }
+
+        .panel { display: none; animation: fadeIn 0.4s ease-out; }
+        .panel.active { display: block; }
+
+        .glass-box {
+            background: rgba(25, 25, 35, 0.6); border: 1px solid var(--border-color);
+            border-radius: 24px; padding: 30px; backdrop-filter: blur(20px); box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        textarea, input[type="text"] {
+            width: 100%; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border-color);
+            color: #fff; padding: 16px; border-radius: 12px; font-size: 1rem; transition: all 0.3s; outline: none; resize: vertical;
+        }
+        textarea:focus, input[type="text"]:focus { border-color: var(--primary-glow); box-shadow: 0 0 15px rgba(124, 58, 237, 0.2); }
+
+        .btn-primary {
+            width: 100%; padding: 16px; border: none; border-radius: 12px; margin-top: 15px;
+            background: linear-gradient(135deg, var(--primary-glow), var(--secondary-glow));
+            color: #fff; font-size: 1.1rem; font-weight: 800; cursor: pointer; transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(124, 58, 237, 0.3);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(124, 58, 237, 0.5); }
+
+        .dropzone {
+            border: 2px dashed var(--border-color); border-radius: 16px; padding: 30px 20px;
+            text-align: center; cursor: pointer; transition: all 0.3s; background: rgba(0, 0, 0, 0.2); margin-bottom: 20px;
+        }
+        .dropzone:hover { border-color: var(--secondary-glow); background: rgba(6, 182, 212, 0.05); }
+        .dropzone-icon { font-size: 3rem; margin-bottom: 10px; }
+
+        .divider { display: flex; align-items: center; text-align: center; color: var(--text-muted); margin: 20px 0; font-size: 0.9rem; }
+        .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border-color); }
+        .divider:not(:empty)::before { margin-left: .5em; }
+        .divider:not(:empty)::after { margin-right: .5em; }
+
+        .instagram-input-box { display: flex; gap: 10px; }
+        .instagram-input-box input { flex: 1; direction: ltr; }
+
+        .trending-list {
+            display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-left: 5px;
+        }
+        .trending-list::-webkit-scrollbar { width: 6px; }
+        .trending-list::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); border-radius: 10px; }
+        .trending-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .trending-list::-webkit-scrollbar-thumb:hover { background: var(--secondary-glow); }
+
+        .trending-item {
+            display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.03);
+            padding: 12px; border-radius: 16px; text-decoration: none; color: #fff;
+            border: 1px solid rgba(255,255,255,0.05); transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .trending-item:hover { background: rgba(255,255,255,0.08); border-color: var(--secondary-glow); transform: translateX(-5px); }
+        .trending-poster { width: 60px; height: 90px; border-radius: 8px; object-fit: cover; background: #1e1e2f; }
+        .trending-info { flex: 1; display: flex; flex-direction: column; }
+        .trending-title { font-weight: 800; font-size: 1rem; margin-bottom: 5px; }
+        .trending-meta { font-size: 0.8rem; color: var(--text-muted); display: flex; gap: 10px; }
+
+        #loader { display: none; text-align: center; margin-top: 40px; color: var(--secondary-glow); }
+        .spinner {
+            width: 40px; height: 40px; border: 4px solid rgba(6, 182, 212, 0.2);
+            border-top-color: var(--secondary-glow); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 15px;
+        }
+        .progress-container {
+            width: 80%; max-width: 300px; height: 8px; background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px; margin: 15px auto 5px; overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary-glow), var(--secondary-glow));
+            border-radius: 10px; transition: width 0.3s ease;
+        }
+        #progress-text { font-size: 0.85rem; color: var(--text-muted); font-family: monospace; }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px);
+            display: none; justify-content: center; align-items: center; z-index: 1000;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-content {
+            background: var(--surface-color); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px; width: 90%; max-width: 750px; max-height: 90vh; overflow-y: auto;
+            position: relative; box-shadow: 0 25px 50px rgba(0,0,0,0.8);
+            transform: scale(0.8) translateY(20px); opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .modal-overlay.active .modal-content { transform: scale(1) translateY(0); opacity: 1; }
+        .close-modal {
+            position: absolute; top: 15px; left: 15px; background: rgba(255,255,255,0.1);
+            border: none; color: white; width: 36px; height: 36px; border-radius: 50%;
+            cursor: pointer; font-size: 20px; display: flex; align-items: center; justify-content: center;
+            transition: all 0.3s; z-index: 10;
+        }
+        .close-modal:hover { background: #ef4444; transform: rotate(90deg); }
         
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); 
-        
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        
-        const data = await res.json();
-        if (data.Response === 'True') {
-            return {
-                poster: data.Poster !== 'N/A' ? data.Poster : null,
-                rating: data.imdbRating !== 'N/A' ? data.imdbRating : null
-            };
+        .result-card { padding: 30px; display: flex; gap: 24px; }
+        .poster {
+            width: 180px; height: 270px; border-radius: 16px; object-fit: cover;
+            background: linear-gradient(135deg, #1e1e2f, #0a0a12); border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center;
+            font-size: 3rem; font-weight: bold; color: #444;
         }
-    } catch (e) {}
-    return { poster: null, rating: null };
-}
+        .info { flex: 1; display: flex; flex-direction: column; }
+        .title-fa { font-size: 1.8rem; font-weight: 800; margin-bottom: 5px; }
+        .title-en { font-size: 1rem; color: var(--text-muted); margin-bottom: 15px; direction: ltr; text-align: right; }
+        
+        .badges { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .badge {
+            background: rgba(255,255,255,0.05); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem;
+            border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 6px;
+        }
+        .badge.confidence { color: #34d399; background: rgba(52, 211, 153, 0.1); border-color: rgba(52, 211, 153, 0.2); }
+        
+        .desc {
+            background: rgba(0,0,0,0.2); padding: 15px; border-radius: 12px; line-height: 1.8;
+            font-size: 0.95rem; color: #cbd5e1; border-right: 4px solid var(--secondary-glow); margin-bottom: 20px;
+        }
+        .desc[dir="ltr"] { border-right: none; border-left: 4px solid var(--secondary-glow); text-align: left;}
+        
+        .actions { display: flex; gap: 10px; margin-top: auto; }
+        .btn-action {
+            padding: 10px 20px; border-radius: 10px; text-decoration: none; font-weight: 700;
+            font-size: 0.9rem; transition: all 0.3s; text-align: center; flex: 1;
+        }
+        .btn-imdb { background: #f5c518; color: #000; }
+        .btn-imdb:hover { background: #e0b20f; transform: translateY(-2px); }
+        .btn-google { background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2); }
+        .btn-google:hover { background: rgba(255,255,255,0.2); transform: translateY(-2px); }
 
-async function showResult(data) {
-    if (!data) return alert('داده‌ای یافت نشد.');
-    
-    let rawTitleFa = data.title_fa || 'نامشخص';
-    rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد').replace(/برکینگ باد/gi, 'بریکینگ بد');
-    let rawConfidence = String(data.confidence || '0').replace(/[%٪]/g, '').trim();
+        .alternatives { margin-top: 20px; border-top: 1px dashed var(--border-color); padding-top: 15px; font-size: 0.9rem; }
+        .footer { text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.9rem; }
 
-    const titleFa = escapeHtml(rawTitleFa);
-    const titleEn = escapeHtml(data.title_en || 'Unknown');
-    const year = `<span dir="ltr" style="display: inline-block;">${escapeHtml(data.year || '---')}</span>`;
-    const type = escapeHtml(data.type || 'نامشخص');
-    const confidence = escapeHtml(rawConfidence);
-    const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
-    const imdbID = data.imdbID || '';
-    
-    const omdbData = await fetchOMDbData(imdbID, data.title_en, data.year);
-    
-    let posterHtml = omdbData.poster 
-        ? `<img src="${omdbData.poster}" class="poster" alt="${titleEn}" onerror="this.outerHTML='<div class=\\'poster\\'>${titleEn.charAt(0)}</div>'">`
-        : `<div class="poster">${titleEn.charAt(0)}</div>`;
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-    let imdbRatingHtml = omdbData.rating 
-        ? `<span class="badge" style="background: #f5c518; color: #000; font-weight: bold; border: none;">⭐ IMDb: ${omdbData.rating}/10</span>`
-        : '';
+        @media (max-width: 600px) {
+            .tab-btn { font-size: 0.8rem; flex-direction: column; gap: 4px; padding: 10px 2px; }
+            .result-card { flex-direction: column; align-items: center; padding: 20px; }
+            .poster { width: 140px; height: 210px; }
+            .info { text-align: center; width: 100%; }
+            .title-en { text-align: center; }
+            .badges, .actions { justify-content: center; }
+            .desc { border-right: none; border-bottom: 3px solid var(--secondary-glow); }
+            .modal-content { width: 95%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-glow-1"></div>
+    <div class="bg-glow-2"></div>
 
-    const imdbLink = imdbID ? `https://www.imdb.com/title/${imdbID}` : `https://www.imdb.com/find?q=${encodeURIComponent(titleEn)}`;
-    const googleLink = `https://www.google.com/search?q=${encodeURIComponent(titleEn + ' ' + data.year + ' movie')}`;
-    
-    const isEnglish = /^[A-Za-z\s.,!?'-]+$/.test(explanation);
-    const descDir = isEnglish ? 'ltr' : 'rtl';
+    <div class="container">
+        <header class="header">
+            <h1>فیلم‌یاب</h1>
+            <p>داستانش رو بگو، فیلمش رو پیدا کن!</p>
+        </header>
 
-    let altHtml = '';
-    if (data.alternatives && data.alternatives.length > 0) {
-        altHtml = `<div class="alternatives">
-            <strong style="color: var(--text-muted); display: block; margin-bottom: 8px;">احتمالات دیگر:</strong>
-            ${data.alternatives.map(alt => `<div style="color: #cbd5e1; margin-bottom: 5px;">• <b>${escapeHtml(alt.title_fa)}</b> - ${escapeHtml(alt.reason)}</div>`).join('')}
-        </div>`;
-    }
+        <div class="tabs-container">
+            <button class="tab-btn active" data-tab="text" id="tab-btn-text">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                جستجو با داستان
+            </button>
+            <button class="tab-btn" data-tab="video" id="tab-btn-video">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                جستجو با ویدیو
+            </button>
+            <button class="tab-btn" data-tab="trending" id="tab-btn-trending">
+                <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                پیشنهاد امروز
+            </button>
+        </div>
 
-    modalBody.innerHTML = `
-        <div class="result-card">
-            ${posterHtml}
-            <div class="info">
-                <h2 class="title-fa">${titleFa}</h2>
-                <div class="title-en">${titleEn} (${year})</div>
-                <div class="badges">
-                    <span class="badge">🎬 ${type}</span>
-                    <span class="badge">📅 ${year}</span>
-                    <span class="badge confidence">✓ اطمینان: ${confidence}٪</span>
-                    ${imdbRatingHtml}
-                </div>
-                <div class="desc" dir="${descDir}">${explanation}</div>
-                <div class="actions">
-                    <a href="${imdbLink}" target="_blank" class="btn-action btn-imdb">IMDb</a>
-                    <a href="${googleLink}" target="_blank" class="btn-action btn-google">گوگل</a>
-                </div>
-                ${altHtml}
+        <div class="panel active" id="panel-text">
+            <div class="glass-box">
+                <textarea id="story" rows="5" placeholder="مثلاً: تعدادی آدم بازی‌های بچه‌گانه می‌کنند تا جایزه نقدی ببرند، اما اگر اشتباه کنند کشته می‌شوند..."></textarea>
+                <button class="btn-primary" id="btn-text">پیدا کن!</button>
             </div>
         </div>
-    `;
 
-    modalOverlay.classList.add('active');
-}
+        <div class="panel" id="panel-video">
+            <div class="glass-box">
+                <div class="dropzone" id="dropzone">
+                    <div class="dropzone-icon">🎬</div>
+                    <p>ویدیو رو اینجا رها کن یا کلیک کن</p>
+                    <small style="color: var(--text-muted)">MP4, MOV, WEBM</small>
+                </div>
+                <input type="file" id="file-input" accept="video/*" style="display: none;">
+                
+                <div id="video-info" style="display: none; margin-bottom: 20px; text-align: center;">
+                    <p class="filename" style="color: var(--secondary-glow); font-weight: bold; margin-bottom: 5px;"></p>
+                    <p class="filesize" style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;"></p>
+                    <video id="video-preview" controls style="max-width: 100%; border-radius: 12px; max-height: 200px;"></video>
+                </div>
+
+                <div class="divider">یا</div>
+                <div class="instagram-input-box">
+                    <input type="text" id="insta-link" placeholder="لینک ریلز اینستاگرام...">
+                </div>
+
+                <textarea id="caption" rows="2" placeholder="توضیحات ویدیو (اختیاری)..." style="margin-top: 15px;"></textarea>
+                <button class="btn-primary" id="btn-video">تحلیل ویدیو / لینک!</button>
+            </div>
+        </div>
+
+        <div class="panel" id="panel-trending">
+            <div class="glass-box">
+                <h3 style="text-align: center; margin-bottom: 20px; color: var(--secondary-glow);">🔥 محبوب‌ترین‌های امروز دنیا</h3>
+                <div class="trending-list" id="trending-list">
+                </div>
+            </div>
+        </div>
+
+        <div id="loader">
+            <div class="spinner"></div>
+            <p id="loader-text">در حال جستجو در آرشیو سینما...</p>
+            <div class="progress-container">
+                <div class="progress-bar" id="progress-bar"></div>
+            </div>
+            <span id="progress-text">0%</span>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>ساخته‌شده با ❤️</p>
+    </footer>
+
+    <div class="modal-overlay" id="result-modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal()">×</button>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
