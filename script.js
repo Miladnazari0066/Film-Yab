@@ -46,7 +46,7 @@ tabBtns.forEach(btn => {
     });
 });
 
-// ================= 🎬 پیشنهاد امروز =================
+// ================= 🎬 پیشنهاد امروز (اتصال مستقیم) =================
 genreSelect.addEventListener('change', (e) => loadTrending(e.target.value));
 
 function showSkeletons(container) {
@@ -57,43 +57,19 @@ function showSkeletons(container) {
     container.innerHTML = html;
 }
 
-const fallbackMovies = [
-    { title: "Inception", year: "2010", poster: "https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "8.8" },
-    { title: "The Dark Knight", year: "2008", poster: "https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "9.0" },
-    { title: "Interstellar", year: "2014", poster: "https://m.media-amazon.com/images/M/MV5BZjdkOTU3MDktN2IxOS00OGEyLWFmMjktY2FiMmZkNWIyODZiXkEyXkFqcGdeQXVyMTMxODk2OTU@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "8.7" },
-    { title: "The Matrix", year: "1999", poster: "https://m.media-amazon.com/images/M/MV5BNzQzOTk3OTAtNDQ0Zi00ZTVkLWI0MTEtMDllZjNkYzNjNTc4L2ltYWdlXkEyXkFqcGdeQXVyNjU0OTQ0OTY@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "8.7" },
-    { title: "Pulp Fiction", year: "1994", poster: "https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGdeQXVyNzkwMjQ5NzM@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "8.9" }
-];
-
-// استفاده از پروکسی قوی‌تر و تایم‌اوت برای جلوگیری از کندی
 async function fetchTMDB(endpoint) {
     const separator = endpoint.includes('?') ? '&' : '?';
     const targetUrl = `https://api.themoviedb.org/3/${endpoint}${separator}api_key=${TMDB_KEY}&language=fa-IR&page=1`;
     
-    // پروکسی بسیار پایدارتر
-    const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
-
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 7000); // حداکثر ۷ ثانیه صبر میکنه
-
-        const res = await fetch(proxyUrl, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        
-        if (!res.ok) throw new Error("Proxy failed");
-        
+        const res = await fetch(targetUrl);
+        if (!res.ok) throw new Error("خطای شبکه");
         const data = await res.json();
-        if (data.results) return data.results;
+        return data.results || [];
     } catch (e) {
-        console.warn(`TMDB دریافت نشد:`, e.message);
+        console.warn("TMDB Error:", e);
+        return null;
     }
-    return null;
-}
-
-function getProxiedImageUrl(path, size = 'w200') {
-    if (!path) return '';
-    const originalUrl = `image.tmdb.org/t/p/${size}${path}`;
-    return `https://images.weserv.nl/?url=${originalUrl}`;
 }
 
 async function loadTrending(genreId = 'all') {
@@ -102,24 +78,14 @@ async function loadTrending(genreId = 'all') {
 
     if (genreId === 'all') {
         results = await fetchTMDB('trending/all/day');
-        if (!results) results = await fetchTMDB('movie/upcoming');
+        if (!results || results.length === 0) results = await fetchTMDB('movie/upcoming');
     } else {
         results = await fetchTMDB(`discover/movie?with_genres=${genreId}&sort_by=popularity.desc`);
     }
 
-    // اگر ارتباط برقرار نشد، سریع لیست پیش‌فرض رو نشون بده
+    // اگر ارتباط برقرار نشد
     if (!results || results.length === 0) {
-        trendingList.innerHTML = `<div style="text-align:center; padding: 10px; color: #f5b942; font-size: 0.9rem;">⚠️ سرور فیلم‌ها در دسترس نیست. نمایش لیست پیش‌فرض:</div>` + 
-        fallbackMovies.map(m => `
-            <a href="https://www.google.com/search?q=${encodeURIComponent(m.title + ' movie')}" target="_blank" class="trending-item">
-                <img src="${m.poster}" class="trending-poster" loading="lazy">
-                <div class="trending-info">
-                    <div class="trending-title">${m.title}</div>
-                    <div class="trending-meta"><span>📅 ${m.year}</span><span style="color:#f5c518;">⭐ ${m.rating}</span></div>
-                </div>
-            </a>
-        `).join('');
-        hasLoadedTrending = true;
+        trendingList.innerHTML = `<div style="text-align:center; padding: 20px; color: #ef4444; font-size: 0.9rem;">⚠️ ارتباط با سرور فیلم‌ها برقرار نشد. لطفاً VPN خود را روشن کنید و دوباره تلاش کنید.</div>`;
         return;
     }
 
@@ -127,7 +93,8 @@ async function loadTrending(genreId = 'all') {
     trendingList.innerHTML = results.map(m => {
         const title = m.title || m.name || 'بدون نام';
         const year = (m.release_date || m.first_air_date || '').split('-')[0] || '---';
-        const poster = getProxiedImageUrl(m.poster_path);
+        // آدرس عکس‌ها حالا مستقیم است و با VPN لود می‌شود
+        const poster = m.poster_path ? `https://image.tmdb.org/t/p/w200${m.poster_path}` : '';
         const rating = m.vote_average ? m.vote_average.toFixed(1) : '0.0';
         const type = m.media_type === 'tv' || m.first_air_date ? 'سریال' : 'فیلم';
         const link = `https://www.google.com/search?q=${encodeURIComponent(title + ' ' + year + ' movie')}`;
@@ -206,6 +173,7 @@ btnVideo.addEventListener('click', async () => {
         let frames = [];
         if (instaUrl) {
             loaderText.textContent = 'در حال دریافت از اینستاگرام...';
+            // برای اینستاگرام به دلیل CORS همچنان به یک پروکسی ساده نیاز است
             const videoUrl = await getInstagramVideoUrl(instaUrl);
             frames = await extractFrames(videoUrl);
         } else {
@@ -225,30 +193,70 @@ btnVideo.addEventListener('click', async () => {
     } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا در تحلیل:\n" + err.message); }, 400); }
 });
 
-// دریافت لینک اینستاگرام
+// دریافت لینک اینستاگرام (به دلیل قوانین CORS نیاز به یک واسط دارد)
 async function getInstagramVideoUrl(instaUrl) {
-    const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(instaUrl)}`;
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(instaUrl)}`;
     try {
         const res = await fetch(proxyUrl);
         const html = await res.text();
         const match = html.match(/<meta property="og:video" content="([^"]+)"/) || html.match(/"video_url":"([^"]+)"/);
         if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
     } catch (e) { console.warn("پروکسی خطا داد:", e); }
-    throw new Error("نتوانستم ویدیو را دریافت کنم. لینک را بررسی کنید یا از فایل استفاده کنید.");
+    throw new Error("نتوانستم ویدیو را دریافت کنم. لطفاً از فایل استفاده کنید.");
 }
+
+// ================= 🎥 دکمه‌های پخش آنلاین (فیلیمو، نماوا و...) =================
+window.openStreamingApp = function(platform, titleEn) {
+    const encodedTitle = encodeURIComponent(titleEn);
+    let appUrl = '';
+    let webUrl = '';
+
+    switch(platform) {
+        case 'filimo':
+            webUrl = `https://www.filimo.com/search?q=${encodedTitle}`;
+            appUrl = `filimo://search?q=${encodedTitle}`; 
+            break;
+        case 'namava':
+            webUrl = `https://www.namava.ir/search?q=${encodedTitle}`;
+            appUrl = `namava://search?q=${encodedTitle}`;
+            break;
+        case 'filmnet':
+            webUrl = `https://filmnet.ir/search?q=${encodedTitle}`;
+            appUrl = `filmnet://search?q=${encodedTitle}`;
+            break;
+        case 'delfan':
+            webUrl = `https://www.google.com/search?q=${encodedTitle}+دلفان`;
+            break;
+        case 'bolboljan':
+            webUrl = `https://www.google.com/search?q=${encodedTitle}+بلبل+جان`;
+            break;
+    }
+
+    if (appUrl) {
+        const start = Date.now();
+        window.location.href = appUrl; // تلاش برای باز کردن اپ
+        setTimeout(() => {
+            if (Date.now() - start < 1500) { // اگر اپ باز نشد، برو به وب
+                window.open(webUrl, '_blank');
+            }
+        }, 1000);
+    } else {
+        window.open(webUrl, '_blank');
+    }
+};
 
 // ================= بخش «کجا ببینم» =================
 async function fetchWatchProviders(titleEn, year) {
     try {
         const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(titleEn)}&year=${year}`;
-        const searchRes = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(searchUrl)}`);
+        const searchRes = await fetch(searchUrl);
         const searchData = await searchRes.json();
         
         if (!searchData.results || searchData.results.length === 0) return null;
         const movieId = searchData.results[0].id;
         
         const providerUrl = `https://api.themoviedb.org/3/movie/${movieId}/watch/providers?api_key=${TMDB_KEY}`;
-        const providerRes = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(providerUrl)}`);
+        const providerRes = await fetch(providerUrl);
         const providerData = await providerRes.json();
         
         const regionData = providerData.results?.US || providerData.results?.IR;
@@ -269,7 +277,7 @@ async function showResult(data) {
     let omdbData = { poster: null, rating: null };
     try {
         const omdbUrl = `https://www.omdbapi.com/?apikey=${OMDB_KEY}&${data.imdbID ? 'i='+data.imdbID : 't='+encodeURIComponent(data.title_en)}`;
-        const omdbRes = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(omdbUrl)}`);
+        const omdbRes = await fetch(omdbUrl);
         const omdbJson = await omdbRes.json();
         if (omdbJson.Response === 'True') {
             omdbData.poster = omdbJson.Poster !== 'N/A' ? omdbJson.Poster : null;
@@ -293,10 +301,24 @@ async function showResult(data) {
             <div class="watch-providers">
                 <div class="providers-title">📍 کجا می‌تونم ببینم؟</div>
                 <div class="providers-list">
-                    ${watchProviders.map(p => `<img src="${getProxiedImageUrl(p.logo_path, 'w92')}" class="provider-logo" title="${p.provider_name}">`).join('')}
+                    ${watchProviders.map(p => `<img src="https://image.tmdb.org/t/p/w92${p.logo_path}" class="provider-logo" title="${p.provider_name}">`).join('')}
                 </div>
             </div>`;
     }
+
+    // دکمه‌های استریم ایرانی
+    const streamingButtonsHtml = `
+        <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border-color);">
+            <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">🎥 پخش آنلاین در ایران:</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button class="btn-action" style="background: #ffcc00; color: #000; padding: 8px;" onclick="openStreamingApp('filimo', '${data.title_en}')">فیلیمو</button>
+                <button class="btn-action" style="background: #007bff; color: #fff; padding: 8px;" onclick="openStreamingApp('namava', '${data.title_en}')">نماوا</button>
+                <button class="btn-action" style="background: #28a745; color: #fff; padding: 8px;" onclick="openStreamingApp('filmnet', '${data.title_en}')">فیلم‌نت</button>
+                <button class="btn-action" style="background: #6f42c1; color: #fff; padding: 8px;" onclick="openStreamingApp('delfan', '${data.title_en}')">دلفان</button>
+                <button class="btn-action" style="background: #fd7e14; color: #fff; padding: 8px;" onclick="openStreamingApp('bolboljan', '${data.title_en}')">بلبل جان</button>
+            </div>
+        </div>
+    `;
 
     modalBody.innerHTML = `
         <div class="result-card">
@@ -314,7 +336,8 @@ async function showResult(data) {
                 </div>
                 <div class="desc">${data.explanation}</div>
                 ${providersHtml}
-                <div class="actions" style="margin-top: 20px;">
+                ${streamingButtonsHtml}
+                <div class="actions" style="margin-top: 15px;">
                     <a href="https://www.imdb.com/find?q=${encodeURIComponent(data.title_en)}" target="_blank" class="btn-action btn-imdb">IMDb</a>
                     <a href="https://www.google.com/search?q=${encodeURIComponent(data.title_en + ' movie')}" target="_blank" class="btn-action btn-google">گوگل</a>
                 </div>
@@ -374,18 +397,18 @@ function buildPrompt(text, isVideo) {
     return `داستان: "${text}". بهترین فیلم را پیدا کن. خروجی JSON: {"title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع", "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح"}`;
 }
 
-// درخواست به OpenRouter (فقط با فیلترشکن کار میکنه)
+// درخواست مستقیم به OpenRouter (با VPN کار میکند)
 async function callOpenRouter(content, isVideoMode = false) {
     const model = isVideoMode ? "qwen/qwen2.5-vl-72b-instruct:free" : "deepseek/deepseek-chat";
-    const targetUrl = "https://openrouter.ai/api/v1/chat/completions";
-    const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
-
+    
     try {
-        const res = await fetch(proxyUrl, {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: 'POST', 
             headers: {
                 'Authorization': `Bearer ${OPENROUTER_KEY}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.href,
+                'X-Title': 'Film-Yab'
             },
             body: JSON.stringify({ model: model, messages: [{ role: 'user', content }], temperature: 0.0 })
         });
@@ -397,7 +420,7 @@ async function callOpenRouter(content, isVideoMode = false) {
         throw new Error("پاسخ خالی از سمت سرور");
     } catch (err) {
         console.error("OpenRouter Error:", err);
-        throw new Error("ارتباط با هوش مصنوعی برقرار نشد. لطفاً فیلترشکن خود را روشن کنید (سرورهای هوش مصنوعی روی IP ایران مسدود هستند).");
+        throw new Error("ارتباط با هوش مصنوعی برقرار نشد. لطفاً VPN خود را روشن کنید.");
     }
 }
 
