@@ -33,7 +33,7 @@ let hasLoadedTrending = false;
 let selectedFile = null;
 let currentMovieData = null; 
 
-// مدیریت تب‌هایلتر) =================
+// مدیریت تب‌ها
 tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
         tabBtns.forEach(b => b.classList.remove('active'));
@@ -46,7 +46,7 @@ tabBtns.forEach(btn => {
     });
 });
 
-// ================= 🎬 پیشنهاد امروز (با سیستم ضد ف
+// ================= 🎬 پیشنهاد امروز =================
 genreSelect.addEventListener('change', (e) => loadTrending(e.target.value));
 
 function showSkeletons(container) {
@@ -57,7 +57,6 @@ function showSkeletons(container) {
     container.innerHTML = html;
 }
 
-// لیست پیش‌فرض در صورت شکست همه پروکسی‌ها
 const fallbackMovies = [
     { title: "Inception", year: "2010", poster: "https://m.media-amazon.com/images/M/MV5BMjAxMzY3NjcxNF5BMl5BanBnXkFtZTcwNTI5OTM0Mw@@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "8.8" },
     { title: "The Dark Knight", year: "2008", poster: "https://m.media-amazon.com/images/M/MV5BMTMxNTMwODM0NF5BMl5BanBnXkFtZTcwODAyMTk2Mw@@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "9.0" },
@@ -66,30 +65,31 @@ const fallbackMovies = [
     { title: "Pulp Fiction", year: "1994", poster: "https://m.media-amazon.com/images/M/MV5BNGNhMDIzZTUtNTBlZi00MTRlLWFjM2ItYzViMjE3YzI5MjljXkEyXkFqcGdeQXVyNzkwMjQ5NzM@._V1_UX182_CR0,0,182,268_AL_.jpg", rating: "8.9" }
 ];
 
+// استفاده از پروکسی قوی‌تر و تایم‌اوت برای جلوگیری از کندی
 async function fetchTMDB(endpoint) {
-    // ✅ رفع باگ: اگر endpoint از قبل ? داشت، از & استفاده کن
     const separator = endpoint.includes('?') ? '&' : '?';
     const targetUrl = `https://api.themoviedb.org/3/${endpoint}${separator}api_key=${TMDB_KEY}&language=fa-IR&page=1`;
     
-    // لیست پروکسی‌ها (به ترتیب اولویت)
-    const proxies = [
-        `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-        `https://thingproxy.freeboard.io/fetch/${targetUrl}`
-    ];
+    // پروکسی بسیار پایدارتر
+    const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
 
-    for (const proxy of proxies) {
-        try {
-            const res = await fetch(proxy);
-            if (!res.ok) continue;
-            const data = await res.json();
-            if (data.results) return data.results;
-        } catch (e) { console.warn(`پروکسی خطا داد: ${proxy}`); }
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 7000); // حداکثر ۷ ثانیه صبر میکنه
+
+        const res = await fetch(proxyUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) throw new Error("Proxy failed");
+        
+        const data = await res.json();
+        if (data.results) return data.results;
+    } catch (e) {
+        console.warn(`TMDB دریافت نشد:`, e.message);
     }
-    return null; // همه پروکسی‌ها شکست خوردند
+    return null;
 }
 
-// تابع تبدیل لینک عکس به لینک ضد فیلتر
 function getProxiedImageUrl(path, size = 'w200') {
     if (!path) return '';
     const originalUrl = `image.tmdb.org/t/p/${size}${path}`;
@@ -107,12 +107,12 @@ async function loadTrending(genreId = 'all') {
         results = await fetchTMDB(`discover/movie?with_genres=${genreId}&sort_by=popularity.desc`);
     }
 
-    // اگر همه پروکسی‌ها شکست خوردند، از لیست پیش‌فرض استفاده کن
+    // اگر ارتباط برقرار نشد، سریع لیست پیش‌فرض رو نشون بده
     if (!results || results.length === 0) {
-        trendingList.innerHTML = `<div style="text-align:center; padding: 10px; color: #f5b942;">⚠️ ارتباط با سرور فیلم‌ها برقرار نشد. نمایش لیست پیش‌فرض:</div>` + 
+        trendingList.innerHTML = `<div style="text-align:center; padding: 10px; color: #f5b942; font-size: 0.9rem;">⚠️ سرور فیلم‌ها در دسترس نیست. نمایش لیست پیش‌فرض:</div>` + 
         fallbackMovies.map(m => `
             <a href="https://www.google.com/search?q=${encodeURIComponent(m.title + ' movie')}" target="_blank" class="trending-item">
-                <img src="${m.poster}" class="trending-poster" loading="lazy" onerror="this.src='https://via.placeholder.com/60x90?text=No+Image'">
+                <img src="${m.poster}" class="trending-poster" loading="lazy">
                 <div class="trending-info">
                     <div class="trending-title">${m.title}</div>
                     <div class="trending-meta"><span>📅 ${m.year}</span><span style="color:#f5c518;">⭐ ${m.rating}</span></div>
@@ -225,21 +225,15 @@ btnVideo.addEventListener('click', async () => {
     } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا در تحلیل:\n" + err.message); }, 400); }
 });
 
-// دریافت لینک اینستاگرام با پروکسی
+// دریافت لینک اینستاگرام
 async function getInstagramVideoUrl(instaUrl) {
-    const proxies = [
-        `https://corsproxy.io/?${encodeURIComponent(instaUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(instaUrl)}`
-    ];
-    
-    for (const proxyUrl of proxies) {
-        try {
-            const res = await fetch(proxyUrl);
-            const html = await res.text();
-            const match = html.match(/<meta property="og:video" content="([^"]+)"/) || html.match(/"video_url":"([^"]+)"/);
-            if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
-        } catch (e) { console.warn("پروکسی خطا داد:", e); }
-    }
+    const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(instaUrl)}`;
+    try {
+        const res = await fetch(proxyUrl);
+        const html = await res.text();
+        const match = html.match(/<meta property="og:video" content="([^"]+)"/) || html.match(/"video_url":"([^"]+)"/);
+        if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
+    } catch (e) { console.warn("پروکسی خطا داد:", e); }
     throw new Error("نتوانستم ویدیو را دریافت کنم. لینک را بررسی کنید یا از فایل استفاده کنید.");
 }
 
@@ -247,14 +241,14 @@ async function getInstagramVideoUrl(instaUrl) {
 async function fetchWatchProviders(titleEn, year) {
     try {
         const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(titleEn)}&year=${year}`;
-        const searchRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(searchUrl)}`);
+        const searchRes = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(searchUrl)}`);
         const searchData = await searchRes.json();
         
         if (!searchData.results || searchData.results.length === 0) return null;
         const movieId = searchData.results[0].id;
         
         const providerUrl = `https://api.themoviedb.org/3/movie/${movieId}/watch/providers?api_key=${TMDB_KEY}`;
-        const providerRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(providerUrl)}`);
+        const providerRes = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(providerUrl)}`);
         const providerData = await providerRes.json();
         
         const regionData = providerData.results?.US || providerData.results?.IR;
@@ -275,7 +269,7 @@ async function showResult(data) {
     let omdbData = { poster: null, rating: null };
     try {
         const omdbUrl = `https://www.omdbapi.com/?apikey=${OMDB_KEY}&${data.imdbID ? 'i='+data.imdbID : 't='+encodeURIComponent(data.title_en)}`;
-        const omdbRes = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(omdbUrl)}`);
+        const omdbRes = await fetch(`https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(omdbUrl)}`);
         const omdbJson = await omdbRes.json();
         if (omdbJson.Response === 'True') {
             omdbData.poster = omdbJson.Poster !== 'N/A' ? omdbJson.Poster : null;
@@ -380,20 +374,18 @@ function buildPrompt(text, isVideo) {
     return `داستان: "${text}". بهترین فیلم را پیدا کن. خروجی JSON: {"title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع", "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح"}`;
 }
 
-// درخواست به OpenRouter (از طریق پروکسی)
+// درخواست به OpenRouter (فقط با فیلترشکن کار میکنه)
 async function callOpenRouter(content, isVideoMode = false) {
     const model = isVideoMode ? "qwen/qwen2.5-vl-72b-instruct:free" : "deepseek/deepseek-chat";
     const targetUrl = "https://openrouter.ai/api/v1/chat/completions";
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    const proxyUrl = `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(targetUrl)}`;
 
     try {
         const res = await fetch(proxyUrl, {
             method: 'POST', 
             headers: {
                 'Authorization': `Bearer ${OPENROUTER_KEY}`,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': 'https://zari0066.github.io',
-                'X-Title': 'Film-Yab'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({ model: model, messages: [{ role: 'user', content }], temperature: 0.0 })
         });
