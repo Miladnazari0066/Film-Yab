@@ -1,0 +1,17 @@
+{
+  "name": "فیلم‌یاب | Film Yab",
+  "short_name": "فیلم‌یاب",
+  "description": "جستجوی هوشمند فیلم و سریال با هوش مصنوعی",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#050508",
+  "theme_color": "#0a0a12",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%230a0a12' stroke='%2306b6d4' stroke-width='4'/%3E%3Ccircle cx='42' cy='42' r='20' fill='none' stroke='%23f5b942' stroke-width='6'/%3E%3Cline x1='56' y1='56' x2='75' y2='75' stroke='%23f5b942' stroke-width='8' stroke-linecap='round'/%3E%3Cpolygon points='38,32 38,52 52,42' fill='%237c3aed'/%3E%3C/svg%3E",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
