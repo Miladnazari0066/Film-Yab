@@ -29,7 +29,6 @@
             overflow-x: hidden; position: relative; padding-bottom: 60px; 
         }
 
-        /* انیمیشن‌های سبک پس‌زمینه */
         .bg-glow-1, .bg-glow-2 {
             position: fixed; width: 500px; height: 500px; border-radius: 50%;
             filter: blur(120px); z-index: -1; opacity: 0.15; pointer-events: none;
@@ -98,7 +97,6 @@
         .instagram-input-box input { direction: ltr; }
         .genre-selector { margin-bottom: 15px; cursor: pointer; }
 
-        /* بخش لیست فیلم‌ها */
         .trending-list { display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-left: 5px; }
         .trending-item {
             display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.03);
@@ -121,7 +119,6 @@
         .progress-container { width: 80%; max-width: 300px; height: 8px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; margin: 15px auto 5px; overflow: hidden; }
         .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--primary-glow), var(--secondary-glow)); transition: width 0.2s; }
 
-        /* پاپ‌آپ (Modal) */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 1000; opacity: 0; transition: opacity 0.3s; }
         .modal-overlay.active { display: flex; opacity: 1; }
         .modal-content { background: var(--surface-color); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; width: 92%; max-width: 750px; max-height: 90vh; overflow-y: auto; position: relative; transform: scale(0.9); opacity: 0; transition: 0.3s; }
@@ -262,6 +259,7 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <!-- 👇 defer اضافه شد تا مطمئن شویم بعد از لود کامل DOM اجرا می‌شود -->
+    <script src="script.js" defer></script>
 </body>
 </html>
