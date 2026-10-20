@@ -1,4 +1,3 @@
-// 🔑 کلیدهای API
 const OPENROUTER_KEY = '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'; 
 const TMDB_KEY = '0d6b2e67010cce1ffb27d958cb1bc152';
 const OMDB_KEY = 'b44a4ca6';
@@ -33,8 +32,102 @@ document.addEventListener('DOMContentLoaded', () => {
     const trendingList = $('trending-list');
     const genreSelect = $('genre-select');
     const favoritesList = $('favorites-list');
+    
+    // المان‌های ورود
+    const authModal = $('auth-modal');
+    const loginBtn = $('login-btn');
+    const usernameInput = $('username-input');
 
-    // مدیریت تب‌ها
+    // ================= 👤 سیستم ورود و پروفایل =================
+    
+    // بررسی وضعیت لاگین در هنگام لود
+    function checkAuth() {
+        const user = localStorage.getItem('filmYabUser');
+        if (user) {
+            loginBtn.innerText = `👤 ${user}`;
+            loginBtn.classList.add('logged-in');
+            loginBtn.onclick = logout;
+        } else {
+            loginBtn.innerText = '👤 ورود';
+            loginBtn.classList.remove('logged-in');
+            loginBtn.onclick = openAuthModal;
+        }
+        renderFavorites(); // آپدیت لیست علاقه‌مندی‌ها بر اساس کاربر فعلی
+    }
+
+    window.openAuthModal = () => { authModal.classList.add('active'); usernameInput.focus(); };
+    window.closeAuthModal = () => { authModal.classList.remove('active'); };
+
+    window.handleLogin = () => {
+        const name = usernameInput.value.trim();
+        if (name.length < 2) return alert('نام باید حداقل ۲ حرف باشد.');
+        localStorage.setItem('filmYabUser', name);
+        closeAuthModal();
+        checkAuth();
+        alert(`خوش آمدی ${name}!`);
+    };
+
+    window.logout = () => {
+        localStorage.removeItem('filmYabUser');
+        checkAuth();
+        alert('از حساب خود خارج شدید.');
+    };
+
+    // ================= ❤️ علاقه‌مندی‌ها (هوشمند بر اساس کاربر) =================
+    
+    // گرفتن کلید مخصوص هر کاربر
+    function getFavKey() {
+        const user = localStorage.getItem('filmYabUser');
+        return user ? `filmYabFavs_${user}` : 'filmYabFavs_Guest';
+    }
+
+    function getFavorites() { 
+        try { return JSON.parse(localStorage.getItem(getFavKey()) || '[]'); } 
+        catch(e) { return []; }
+    }
+
+    window.toggleFavorite = function() {
+        if(!currentMovieData) return;
+        
+        let favs = getFavorites();
+        const index = favs.findIndex(f => f.imdbID === currentMovieData.imdbID || f.title_en === currentMovieData.title_en);
+        if (index > -1) favs.splice(index, 1); else favs.push(currentMovieData);
+        
+        localStorage.setItem(getFavKey(), JSON.stringify(favs));
+        
+        const btn = $('bookmark-btn');
+        if (btn) {
+            const isSaved = favs.some(f => f.imdbID === currentMovieData.imdbID || f.title_en === currentMovieData.title_en);
+            btn.classList.toggle('saved', isSaved);
+            btn.innerHTML = isSaved ? '★' : '☆';
+        }
+    };
+
+    function renderFavorites() {
+        favoritesCache = getFavorites();
+        if (favoritesCache.length === 0) {
+            favoritesList.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">هنوز فیلمی ذخیره نکرده‌اید.</p>';
+            return;
+        }
+        favoritesList.innerHTML = favoritesCache.map((m, index) => `
+            <div class="trending-item" onclick="openSavedMovie(${index})">
+                ${m.poster && m.poster !== 'N/A' ? `<img src="${m.poster}" class="trending-poster">` : `<div class="trending-poster">🎬</div>`}
+                <div class="trending-info">
+                    <div class="trending-title">${m.title_fa}</div>
+                    <div class="trending-meta"><span>📅 ${m.year}</span><span style="color:#f5c518;">⭐ ${m.imdbRating || ''}</span></div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    window.openSavedMovie = (index) => {
+        showResult(favoritesCache[index]);
+    };
+
+    // شروع بررسی لاگین
+    checkAuth();
+
+    // ================= مدیریت تب‌ها =================
     tabBtns.forEach(btn => {
         btn.addEventListener('click', () => {
             tabBtns.forEach(b => b.classList.remove('active'));
@@ -108,49 +201,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // ================= ❤️ علاقه‌مندی‌ها =================
-    function getFavorites() { 
-        try { return JSON.parse(localStorage.getItem('filmYabFavorites') || '[]'); } 
-        catch(e) { return []; }
-    }
-
-    window.toggleFavorite = function() {
-        if(!currentMovieData) return;
-        
-        let favs = getFavorites();
-        const index = favs.findIndex(f => f.imdbID === currentMovieData.imdbID || f.title_en === currentMovieData.title_en);
-        if (index > -1) favs.splice(index, 1); else favs.push(currentMovieData);
-        localStorage.setItem('filmYabFavorites', JSON.stringify(favs));
-        
-        const btn = $('bookmark-btn');
-        if (btn) {
-            const isSaved = favs.some(f => f.imdbID === currentMovieData.imdbID || f.title_en === currentMovieData.title_en);
-            btn.classList.toggle('saved', isSaved);
-            btn.innerHTML = isSaved ? '★' : '☆';
-        }
-    };
-
-    function renderFavorites() {
-        favoritesCache = getFavorites();
-        if (favoritesCache.length === 0) {
-            favoritesList.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">هنوز فیلمی ذخیره نکرده‌اید.</p>';
-            return;
-        }
-        favoritesList.innerHTML = favoritesCache.map((m, index) => `
-            <div class="trending-item" onclick="openSavedMovie(${index})">
-                ${m.poster && m.poster !== 'N/A' ? `<img src="${m.poster}" class="trending-poster">` : `<div class="trending-poster">🎬</div>`}
-                <div class="trending-info">
-                    <div class="trending-title">${m.title_fa}</div>
-                    <div class="trending-meta"><span>📅 ${m.year}</span><span style="color:#f5c518;">⭐ ${m.imdbRating || ''}</span></div>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    window.openSavedMovie = (index) => {
-        showResult(favoritesCache[index]);
-    };
-
     // ================= 📝 جستجوها =================
     $('btn-text').addEventListener('click', async () => {
         const text = storyInput.value.trim();
@@ -192,7 +242,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (err) { finishProgress(); showLoader(false); alert(err.message); }
     });
 
-    // دریافت لینک اینستاگرام
     async function getInstagramVideoUrl(instaUrl) {
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(instaUrl)}`;
         const res = await fetch(proxyUrl);
@@ -202,25 +251,43 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error("ویدیو یافت نشد. لطفا از فایل استفاده کنید.");
     }
 
-    // ================= 🎥 لینک‌های استریم (اصلاح شده) =================
-    window.openStreamingApp = function(platform) {
+    // ================= 📋 کپی کردن نام فیلم =================
+    window.copyMovieTitle = function() {
         if (!currentMovieData || !currentMovieData.title_en) return;
-        
-        const encodedTitle = encodeURIComponent(currentMovieData.title_en);
-        let webUrl = '';
+        const textToCopy = currentMovieData.title_en;
 
-        switch(platform) {
-            case 'filimo': webUrl = `https://www.filimo.com/search?q=${encodedTitle}`; break;
-            case 'namava': webUrl = `https://www.namava.ir/search?q=${encodedTitle}`; break;
-            case 'filmnet': webUrl = `https://filmnet.ir/search?q=${encodedTitle}`; break;
-            case 'delfan': webUrl = `https://www.google.com/search?q=${encodedTitle}+دلفان`; break;
-            case 'bolboljan': webUrl = `https://www.google.com/search?q=${encodedTitle}+بلبل+جان`; break;
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                showToast('نام فیلم کپی شد: ' + textToCopy);
+            }).catch(() => {
+                fallbackCopy(textToCopy);
+            });
+        } else {
+            fallbackCopy(textToCopy);
         }
-
-        // استفاده از Universal Links: باز کردن لینک وب. 
-        // اگر اپ نصب باشد، سیستم عامل خودکار اپ را باز میکند.
-        window.open(webUrl, '_blank');
     };
+
+    function fallbackCopy(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            showToast('نام فیلم کپی شد: ' + text);
+        } catch (err) {
+            alert('کپی نشد، لطفاً دستی انتخاب کنید.');
+        }
+        document.body.removeChild(textArea);
+    }
+
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.style.cssText = "position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:var(--secondary-glow);color:#000;padding:10px 20px;border-radius:20px;font-weight:bold;z-index:9999;font-size:0.9rem;box-shadow:0 5px 15px rgba(0,0,0,0.5);";
+        toast.innerText = message;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2500);
+    }
 
     // ================= 📺 بخش «کجا ببینم» =================
     async function fetchProvidersInBackground(titleEn, year) {
@@ -285,18 +352,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     
                     <div id="providers-container"></div>
 
-                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed var(--border-color);">
-                        <div style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 10px;">🎥 پخش آنلاین در ایران:</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                            <button class="btn-action" style="background: #ffcc00; color: #000;" onclick="openStreamingApp('filimo')">فیلیمو</button>
-                            <button class="btn-action" style="background: #007bff; color: #fff;" onclick="openStreamingApp('namava')">نماوا</button>
-                            <button class="btn-action" style="background: #28a745; color: #fff;" onclick="openStreamingApp('filmnet')">فیلم‌نت</button>
-                            <button class="btn-action" style="background: #6f42c1; color: #fff;" onclick="openStreamingApp('delfan')">دلفان</button>
-                            <button class="btn-action" style="background: #fd7e14; color: #fff;" onclick="openStreamingApp('bolboljan')">بلبل جان</button>
-                        </div>
-                    </div>
-
                     <div class="actions" style="margin-top: 15px;">
+                        <button class="btn-action btn-copy" onclick="copyMovieTitle()">📋 کپی نام انگلیسی فیلم</button>
                         <a href="https://www.imdb.com/find?q=${encodeURIComponent(data.title_en)}" target="_blank" class="btn-action btn-imdb">IMDb</a>
                         <a href="https://www.google.com/search?q=${encodeURIComponent(data.title_en + ' movie')}" target="_blank" class="btn-action btn-google">گوگل</a>
                     </div>
