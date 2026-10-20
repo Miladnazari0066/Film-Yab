@@ -49,7 +49,6 @@ tabBtns.forEach(btn => {
             panels[key].classList.toggle('active', key === target);
         });
 
-        // اگر روی تب پیشنهاد امروز کلیک شد و قبلا لود نشده بود
         if (target === 'trending' && !hasLoadedTrending) {
             loadTrending();
         }
@@ -71,14 +70,12 @@ async function fetchTMDB(endpoint) {
 async function loadTrending() {
     trendingList.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
     
-    // گرفتن ۳ لیست مختلف
     const [trending, upcoming, tvShows] = await Promise.all([
         fetchTMDB('trending/all/day'),
         fetchTMDB('movie/upcoming'),
         fetchTMDB('tv/popular')
     ]);
 
-    // ترکیب، حذف تکراری‌ها و فیلتر کردن اشخاص
     const combined = [...trending, ...upcoming, ...tvShows].filter(item => item.media_type !== 'person');
     const unique = Array.from(new Map(combined.map(item => [item.id, item])).values()).slice(0, 30); 
 
