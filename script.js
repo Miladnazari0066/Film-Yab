@@ -1,3 +1,4 @@
+// 🔑 کلیدهای API
 const OPENROUTER_KEY = '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'; 
 const TMDB_KEY = '0d6b2e67010cce1ffb27d958cb1bc152';
 const OMDB_KEY = 'b44a4ca6';
@@ -10,12 +11,9 @@ const $ = id => document.getElementById(id);
 let hasLoadedTrending = false; 
 let selectedFile = null;
 let currentMovieData = null; 
-
-// کش برای جلوگیری از خطای آپاستروف در HTML
 let trendingCache = [];
 let favoritesCache = [];
 
-// صبر میکنیم تا کل صفحه لود شود
 document.addEventListener('DOMContentLoaded', () => {
     
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -62,7 +60,6 @@ document.addEventListener('DOMContentLoaded', () => {
         showSkeletons(trendingList);
         let endpoint = genreId === 'all' ? 'trending/all/day' : `discover/movie?with_genres=${genreId}&sort_by=popularity.desc`;
         
-        // ✅ رفع باگ: مدیریت علامت‌های ? و &
         const separator = endpoint.includes('?') ? '&' : '?';
         const url = `https://api.themoviedb.org/3/${endpoint}${separator}api_key=${TMDB_KEY}&language=fa-IR&page=1`;
         
@@ -73,7 +70,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!data.results || data.results.length === 0) throw new Error("No data");
 
             hasLoadedTrending = true;
-            trendingCache = data.results.slice(0, 20); // ذخیره در کش
+            trendingCache = data.results.slice(0, 20); 
 
             trendingList.innerHTML = trendingCache.map((m, index) => {
                 const title = m.title || m.name || 'بدون نام';
@@ -96,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // باز کردن پاپ‌آپ با کلیک روی فیلم‌های پیشنهادی
     window.handleTrendingClick = (index) => {
         const m = trendingCache[index];
         const title = m.title || m.name || 'بدون نام';
@@ -114,9 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ================= ❤️ علاقه‌مندی‌ها =================
     function getFavorites() { 
-        try {
-            return JSON.parse(localStorage.getItem('filmYabFavorites') || '[]'); 
-        } catch(e) { return []; }
+        try { return JSON.parse(localStorage.getItem('filmYabFavorites') || '[]'); } 
+        catch(e) { return []; }
     }
 
     window.toggleFavorite = function() {
@@ -207,28 +202,24 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error("ویدیو یافت نشد. لطفا از فایل استفاده کنید.");
     }
 
-    // ================= 🎥 لینک‌های استریم =================
+    // ================= 🎥 لینک‌های استریم (اصلاح شده) =================
     window.openStreamingApp = function(platform) {
-        if (!currentMovieData) return;
+        if (!currentMovieData || !currentMovieData.title_en) return;
+        
         const encodedTitle = encodeURIComponent(currentMovieData.title_en);
-        let appUrl = '';
         let webUrl = '';
 
         switch(platform) {
-            case 'filimo': webUrl = `https://www.filimo.com/search?q=${encodedTitle}`; appUrl = `filimo://search?q=${encodedTitle}`; break;
-            case 'namava': webUrl = `https://www.namava.ir/search?q=${encodedTitle}`; appUrl = `namava://search?q=${encodedTitle}`; break;
-            case 'filmnet': webUrl = `https://filmnet.ir/search?q=${encodedTitle}`; appUrl = `filmnet://search?q=${encodedTitle}`; break;
+            case 'filimo': webUrl = `https://www.filimo.com/search?q=${encodedTitle}`; break;
+            case 'namava': webUrl = `https://www.namava.ir/search?q=${encodedTitle}`; break;
+            case 'filmnet': webUrl = `https://filmnet.ir/search?q=${encodedTitle}`; break;
             case 'delfan': webUrl = `https://www.google.com/search?q=${encodedTitle}+دلفان`; break;
             case 'bolboljan': webUrl = `https://www.google.com/search?q=${encodedTitle}+بلبل+جان`; break;
         }
 
-        if (appUrl && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-            const start = Date.now();
-            window.location.href = appUrl; 
-            setTimeout(() => { if (Date.now() - start < 1500) window.open(webUrl, '_blank'); }, 1000);
-        } else {
-            window.open(webUrl, '_blank');
-        }
+        // استفاده از Universal Links: باز کردن لینک وب. 
+        // اگر اپ نصب باشد، سیستم عامل خودکار اپ را باز میکند.
+        window.open(webUrl, '_blank');
     };
 
     // ================= 📺 بخش «کجا ببینم» =================
@@ -314,7 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
         
         modalOverlay.classList.add('active');
 
-        // دریافت پوستر و امتیاز در پس‌زمینه
         if (!data.poster || !data.imdbRating) {
             try {
                 const omdbRes = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_KEY}&${data.imdbID ? 'i='+data.imdbID : 't='+encodeURIComponent(data.title_en)}`);
