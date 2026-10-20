@@ -1,4 +1,8 @@
-const WORKER_URL = 'https://in.seetectools.workers.dev'; // 🔴 آدرس Worker خودت
+// 🔑 کلیدهای API (به جای ورکر، مستقیم اینجا هستند)
+const OPENROUTER_KEY = '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'; // کلید DeepSeek (این را با کلید جدید عوض کن)
+const TMDB_KEY = '0d6b2e67010cce1ffb27d958cb1bc152';
+const OMDB_KEY = 'b44a4ca6';
+
 const FRAME_COUNT = 4; 
 const FRAME_WIDTH = 400;
 
@@ -27,7 +31,7 @@ const favoritesList = $('favorites-list');
 
 let hasLoadedTrending = false; 
 let selectedFile = null;
-let currentMovieData = null; // برای ذخیره فیلم فعلی که در مودال بازه
+let currentMovieData = null; 
 
 // مدیریت تب‌ها
 tabBtns.forEach(btn => {
@@ -42,27 +46,23 @@ tabBtns.forEach(btn => {
     });
 });
 
-// ================= 🎬 پیشنهاد امروز (Skeleton Loading) =================
+// ================= 🎬 پیشنهاد امروز (TMDB) =================
 genreSelect.addEventListener('change', (e) => loadTrending(e.target.value));
 
 function showSkeletons(container) {
     let html = '';
     for(let i=0; i<5; i++) {
-        html += `<div class="skeleton-item">
-            <div class="skeleton-poster"></div>
-            <div class="skeleton-info">
-                <div class="skeleton-line"></div>
-                <div class="skeleton-line short"></div>
-            </div>
-        </div>`;
+        html += `<div class="skeleton-item"><div class="skeleton-poster"></div><div class="skeleton-info"><div class="skeleton-line"></div><div class="skeleton-line short"></div></div></div>`;
     }
     container.innerHTML = html;
 }
 
 async function fetchTMDB(endpoint) {
     try {
-        const res = await fetch(`${WORKER_URL}/api/tmdb/${endpoint}`);
-        return (await res.json()).results || [];
+        // درخواست مستقیم به TMDB
+        const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_KEY}&language=fa-IR&page=1`);
+        const data = await res.json();
+        return data.results || [];
     } catch (e) { return []; }
 }
 
@@ -72,22 +72,22 @@ async function loadTrending(genreId = 'all') {
 
     if (genreId === 'all') {
         const [trending, upcoming, tvShows] = await Promise.all([
-            fetchTMDB('trending/all/day?'),
-            fetchTMDB('movie/upcoming?'),
-            fetchTMDB('tv/popular?')
+            fetchTMDB('trending/all/day'),
+            fetchTMDB('movie/upcoming'),
+            fetchTMDB('tv/popular')
         ]);
         const combined = [...trending, ...upcoming, ...tvShows].filter(item => item.media_type !== 'person');
         results = Array.from(new Map(combined.map(item => [item.id, item])).values()).slice(0, 30);
     } else {
         const [movies, tvShows] = await Promise.all([
-            fetchTMDB(`discover/movie?with_genres=${genreId}&sort_by=popularity.desc&`),
-            fetchTMDB(`discover/tv?with_genres=${genreId}&sort_by=popularity.desc&`)
+            fetchTMDB(`discover/movie?with_genres=${genreId}&sort_by=popularity.desc`),
+            fetchTMDB(`discover/tv?with_genres=${genreId}&sort_by=popularity.desc`)
         ]);
         results = Array.from(new Map([...movies, ...tvShows].map(item => [item.id, item])).values())
                       .sort((a, b) => b.popularity - a.popularity).slice(0, 30);
     }
 
-    if (results.length === 0) { trendingList.innerHTML = '<p style="text-align:center;">خطا در دریافت اطلاعات.</p>'; return; }
+    if (results.length === 0) { trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات.</p>'; return; }
     hasLoadedTrending = true;
 
     trendingList.innerHTML = results.map(m => {
@@ -109,32 +109,22 @@ async function loadTrending(genreId = 'all') {
     }).join('');
 }
 
-// ================= ❤️ بخش علاقه‌مندی‌ها =================
-function getFavorites() {
-    return JSON.parse(localStorage.getItem('filmYabFavorites') || '[]');
-}
+// ================= ❤️ علاقه‌مندی‌ها =================
+function getFavorites() { return JSON.parse(localStorage.getItem('filmYabFavorites') || '[]'); }
 
-function toggleFavorite(movieData) {
+window.toggleFavorite = function(movieData) {
     let favs = getFavorites();
     const index = favs.findIndex(f => f.imdbID === movieData.imdbID || f.title_en === movieData.title_en);
-    
-    if (index > -1) {
-        favs.splice(index, 1); // حذف
-    } else {
-        favs.push(movieData); // اضافه
-    }
+    if (index > -1) favs.splice(index, 1); else favs.push(movieData);
     localStorage.setItem('filmYabFavorites', JSON.stringify(favs));
-    updateBookmarkIcon(movieData);
-}
-
-function updateBookmarkIcon(movieData) {
+    
     const btn = $('bookmark-btn');
-    if (!btn) return;
-    const favs = getFavorites();
-    const isSaved = favs.some(f => f.imdbID === movieData.imdbID || f.title_en === movieData.title_en);
-    btn.classList.toggle('saved', isSaved);
-    btn.innerHTML = isSaved ? '★' : '☆';
-}
+    if (btn) {
+        const isSaved = favs.some(f => f.imdbID === movieData.imdbID || f.title_en === movieData.title_en);
+        btn.classList.toggle('saved', isSaved);
+        btn.innerHTML = isSaved ? '★' : '☆';
+    }
+};
 
 function renderFavorites() {
     const favs = getFavorites();
@@ -142,7 +132,6 @@ function renderFavorites() {
         favoritesList.innerHTML = '<p style="text-align:center; color:var(--text-muted); margin-top:20px;">هنوز فیلمی ذخیره نکرده‌اید.</p>';
         return;
     }
-
     favoritesList.innerHTML = favs.map(m => `
         <div class="trending-item" style="cursor:pointer;" onclick="openSavedMovie('${m.title_en}')">
             ${m.poster && m.poster !== 'N/A' ? `<img src="${m.poster}" class="trending-poster">` : `<div class="trending-poster">🎬</div>`}
@@ -155,12 +144,11 @@ function renderFavorites() {
 }
 
 window.openSavedMovie = (titleEn) => {
-    const favs = getFavorites();
-    const movie = favs.find(f => f.title_en === titleEn);
+    const movie = getFavorites().find(f => f.title_en === titleEn);
     if (movie) showResult(movie);
 };
 
-// ================= 📝 جستجوی متنی و ویدیویی =================
+// ================= 📝 جستجوها =================
 btnText.addEventListener('click', async () => {
     const text = storyInput.value.trim();
     if (text.length < 10) return alert('توضیحات بیشتری بنویسید.');
@@ -172,7 +160,7 @@ btnText.addEventListener('click', async () => {
         const parsedData = parseJson(rawResponse);
         finishProgress();
         setTimeout(async () => { showLoader(false); await showResult(parsedData); }, 400);
-    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert(err.message); }, 400); }
+    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا:\n" + err.message); }, 400); }
 });
 
 btnVideo.addEventListener('click', async () => {
@@ -184,10 +172,8 @@ btnVideo.addEventListener('click', async () => {
         let frames = [];
         if (instaUrl) {
             loaderText.textContent = 'در حال دریافت از اینستاگرام...';
-            const res = await fetch(`${WORKER_URL}/api/insta?url=${encodeURIComponent(instaUrl)}`);
-            const data = await res.json();
-            if (data.error) throw new Error(data.error);
-            frames = await extractFrames(data.videoUrl);
+            const videoUrl = await getInstagramVideoUrl(instaUrl);
+            frames = await extractFrames(videoUrl);
         } else {
             loaderText.textContent = 'در حال استخراج فریم‌ها...';
             frames = await extractFrames(selectedFile);
@@ -202,46 +188,58 @@ btnVideo.addEventListener('click', async () => {
         
         finishProgress();
         setTimeout(async () => { showLoader(false); await showResult(parsedData); }, 400);
-    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert(err.message); }, 400); }
+    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا:\n" + err.message); }, 400); }
 });
 
-// ================= 📺 بخش «کجا ببینم» (Watch Providers) =================
+// دریافت لینک اینستاگرام با پروکسی
+async function getInstagramVideoUrl(instaUrl) {
+    const proxies = [
+        `https://corsproxy.io/?${encodeURIComponent(instaUrl)}`,
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(instaUrl)}`
+    ];
+    
+    for (const proxyUrl of proxies) {
+        try {
+            const res = await fetch(proxyUrl);
+            const html = await res.text();
+            const match = html.match(/<meta property="og:video" content="([^"]+)"/) || html.match(/"video_url":"([^"]+)"/);
+            if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
+        } catch (e) { console.warn("پروکسی خطا داد:", e); }
+    }
+    throw new Error("نتوانستم ویدیو را از لینک اینستاگرام دریافت کنم.");
+}
+
+// ================= بخش «کجا ببینم» (Watch Providers) =================
 async function fetchWatchProviders(titleEn, year) {
     try {
-        // اول آیدی TMDB رو با اسم فیلم پیدا می‌کنیم
-        const searchRes = await fetch(`${WORKER_URL}/api/tmdb/search/movie?query=${encodeURIComponent(titleEn)}&year=${year}`);
+        const searchRes = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(titleEn)}&year=${year}`);
         const searchData = await searchRes.json();
         
         if (!searchData.results || searchData.results.length === 0) return null;
-        
         const movieId = searchData.results[0].id;
-        const providerRes = await fetch(`${WORKER_URL}/api/tmdb/movie/${movieId}/watch/providers`);
+        
+        const providerRes = await fetch(`https://api.themoviedb.org/3/movie/${movieId}/watch/providers?api_key=${TMDB_KEY}`);
         const providerData = await providerRes.json();
         
-        // معمولاً اطلاعات آمریکا کامل‌تره، اگر ایران نبود از US استفاده می‌کنیم
         const regionData = providerData.results?.US || providerData.results?.IR;
         if (!regionData) return null;
 
-        // لیست پلتفرم‌های استریم
         const providers = regionData.flatrate || regionData.rent || regionData.buy || [];
         return providers.length > 0 ? providers : null;
-
-    } catch (e) {
-        return null;
-    }
+    } catch (e) { return null; }
 }
 
-// ================= نمایش نتیجه و مودال =================
+// ================= نمایش نتیجه =================
 async function showResult(data) {
     if (!data) return alert('داده‌ای یافت نشد.');
     
     let rawTitleFa = data.title_fa || 'نامشخص';
     rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد').replace(/برکینگ باد/gi, 'بریکینگ بد');
     
-    // گرفتن اطلاعات از Worker (OMDb)
+    // دریافت اطلاعات از OMDb
     let omdbData = { poster: null, rating: null };
     try {
-        const omdbRes = await fetch(`${WORKER_URL}/api/omdb?${data.imdbID ? 'i='+data.imdbID : 't='+encodeURIComponent(data.title_en)}`);
+        const omdbRes = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_KEY}&${data.imdbID ? 'i='+data.imdbID : 't='+encodeURIComponent(data.title_en)}`);
         const omdbJson = await omdbRes.json();
         if (omdbJson.Response === 'True') {
             omdbData.poster = omdbJson.Poster !== 'N/A' ? omdbJson.Poster : null;
@@ -249,10 +247,9 @@ async function showResult(data) {
         }
     } catch(e) {}
 
-    // گرفتن پلتفرم‌های استریم
+    // دریافت پلتفرم‌های پخش
     const watchProviders = await fetchWatchProviders(data.title_en, data.year);
 
-    // دیتای نهایی برای ذخیره در علاقه‌مندی‌ها
     currentMovieData = {
         title_fa: rawTitleFa, title_en: data.title_en, year: data.year, type: data.type,
         imdbID: data.imdbID, explanation: data.explanation, confidence: data.confidence,
@@ -261,7 +258,6 @@ async function showResult(data) {
 
     const isSaved = getFavorites().some(f => f.imdbID === data.imdbID || f.title_en === data.title_en);
     
-    // ساخت لیست پلتفرم‌ها
     let providersHtml = '';
     if (watchProviders) {
         providersHtml = `
@@ -270,8 +266,7 @@ async function showResult(data) {
                 <div class="providers-list">
                     ${watchProviders.map(p => `<img src="https://image.tmdb.org/t/p/w200${p.logo_path}" class="provider-logo" title="${p.provider_name}">`).join('')}
                 </div>
-            </div>
-        `;
+            </div>`;
     }
 
     modalBody.innerHTML = `
@@ -295,8 +290,7 @@ async function showResult(data) {
                     <a href="https://www.google.com/search?q=${encodeURIComponent(data.title_en + ' movie')}" target="_blank" class="btn-action btn-google">گوگل</a>
                 </div>
             </div>
-        </div>
-    `;
+        </div>`;
     modalOverlay.classList.add('active');
 }
 
@@ -304,8 +298,6 @@ async function showResult(data) {
 function closeModal() { modalOverlay.classList.remove('active'); }
 window.closeModal = closeModal;
 modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) closeModal(); });
-window.currentMovieData = null; // متغیر گلوبال برای دسترسی دکمه بوکمارک
-window.toggleFavorite = toggleFavorite;
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
@@ -353,15 +345,22 @@ function buildPrompt(text, isVideo) {
     return `داستان: "${text}". بهترین فیلم را پیدا کن. خروجی JSON: {"title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع", "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح"}`;
 }
 
+// درخواست مستقیم به OpenRouter
 async function callOpenRouter(content, isVideoMode = false) {
-    const apiKey = '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'; // فعلاً یک کلید تست
-    // در نسخه واقعی، کلید در Worker است و اینجا نیازی به کلید نیست، اما چون Worker برای AI کلید میخواد:
-    const res = await fetch(`${WORKER_URL}/api/ai`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: isVideoMode ? "qwen/qwen2.5-vl-72b-instruct:free" : "deepseek/deepseek-chat", messages: [{ role: 'user', content }], temperature: 0.0 })
+    const model = isVideoMode ? "qwen/qwen2.5-vl-72b-instruct:free" : "deepseek/deepseek-chat";
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: 'POST', 
+        headers: {
+            'Authorization': `Bearer ${OPENROUTER_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': location.origin,
+            'X-Title': 'Film-Yab'
+        },
+        body: JSON.stringify({ model: model, messages: [{ role: 'user', content }], temperature: 0.0 })
     });
     const data = await res.json();
     if (data.choices && data.choices.length > 0) return data.choices[0].message.content;
+    if (data.error) throw new Error(data.error.message || data.error);
     throw new Error("پاسخی دریافت نشد.");
 }
 
