@@ -2,8 +2,17 @@
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>فیلم‌یاب | جستجوی هوشمند فیلم</title>
+    
+    <!-- 🌟 لوگوی اختصاصی (SVG) 🌟 -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%230a0a12' stroke='%2306b6d4' stroke-width='4'/%3E%3Ccircle cx='42' cy='42' r='20' fill='none' stroke='%23f5b942' stroke-width='6'/%3E%3Cline x1='56' y1='56' x2='75' y2='75' stroke='%23f5b942' stroke-width='8' stroke-linecap='round'/%3E%3Cpolygon points='38,32 38,52 52,42' fill='%237c3aed'/%3E%3C/svg%3E">
+    
+    <!-- 📱 تنظیمات PWA برای نصب روی گوشی -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0a0a12">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='45' fill='%230a0a12' stroke='%2306b6d4' stroke-width='4'/%3E%3Ccircle cx='42' cy='42' r='20' fill='none' stroke='%23f5b942' stroke-width='6'/%3E%3Cline x1='56' y1='56' x2='75' y2='75' stroke='%23f5b942' stroke-width='8' stroke-linecap='round'/%3E%3Cpolygon points='38,32 38,52 52,42' fill='%237c3aed'/%3E%3C/svg%3E">
+
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -16,7 +25,7 @@
             --text-muted: #94a3b8;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Vazirmatn', sans-serif; -webkit-tap-highlight-color: transparent; }
 
         body {
             background-color: var(--bg-color);
@@ -38,7 +47,7 @@
 
         .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; width: 100%; flex: 1; }
 
-        .header { text-align: center; margin-bottom: 40px; }
+        .header { text-align: center; margin-bottom: 40px; display: flex; flex-direction: column; align-items: center; }
         .header h1 {
             font-size: 2.5rem; font-weight: 800; margin-bottom: 10px;
             background: linear-gradient(135deg, #fff, #a78bfa);
@@ -95,6 +104,17 @@
 
         .instagram-input-box { display: flex; gap: 10px; }
         .instagram-input-box input { flex: 1; direction: ltr; }
+
+        /* ================= 🌟 استایل منوی ژانر و لیست پیشنهاد امروز 🌟 ================= */
+        .genre-selector {
+            width: 100%; padding: 12px 16px; margin-bottom: 20px;
+            background: rgba(0,0,0,0.4); border: 1px solid var(--border-color);
+            color: #fff; border-radius: 12px; font-family: inherit; font-size: 1rem;
+            outline: none; cursor: pointer; appearance: none;
+            background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+            background-repeat: no-repeat; background-position: left 15px top 50%; background-size: 12px auto;
+        }
+        .genre-selector:focus { border-color: var(--secondary-glow); }
 
         .trending-list {
             display: flex; flex-direction: column; gap: 12px; max-height: 60vh; overflow-y: auto; padding-left: 5px;
@@ -264,8 +284,22 @@
 
         <div class="panel" id="panel-trending">
             <div class="glass-box">
-                <h3 style="text-align: center; margin-bottom: 20px; color: var(--secondary-glow);">🔥 محبوب‌ترین‌های امروز دنیا</h3>
+                <h3 style="text-align: center; margin-bottom: 20px; color: var(--secondary-glow);">🔥 محبوب‌ترین‌های امروز</h3>
+                
+                <!-- 🌟 منوی انتخاب ژانر 🌟 -->
+                <select id="genre-select" class="genre-selector">
+                    <option value="all">🌟 همه ژانرها (محبوب‌ترین‌ها)</option>
+                    <option value="28">💥 اکشن (Action)</option>
+                    <option value="35">😂 کمدی (Comedy)</option>
+                    <option value="27">👻 ترسناک (Horror)</option>
+                    <option value="878">🚀 علمی تخیلی (Sci-Fi)</option>
+                    <option value="18">🎭 درام (Drama)</option>
+                    <option value="10749">❤️ عاشقانه (Romance)</option>
+                    <option value="16">🎨 انیمیشن (Animation)</option>
+                </select>
+
                 <div class="trending-list" id="trending-list">
+                    <!-- لیست توسط جاوااسکریپت پر می‌شود -->
                 </div>
             </div>
         </div>
