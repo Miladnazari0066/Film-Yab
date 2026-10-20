@@ -8,7 +8,7 @@ const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FRAME_COUNT = 4; 
 const FRAME_WIDTH = 400;
 const OMDB_API_KEY = 'b44a4ca6';
-const TMDB_API_KEY = '0d6b2e67010cce1ffb27d958cb1bc152'; // 🔑 کلید TMDB
+const TMDB_API_KEY = '0d6b2e67010cce1ffb27d958cb1bc152'; 
 
 const $ = id => document.getElementById(id);
 
@@ -35,6 +35,7 @@ const progressText = $('progress-text');
 const modalOverlay = $('result-modal');
 const modalBody = $('modal-body');
 const trendingList = $('trending-list');
+const genreSelect = $('genre-select'); // 👈 المان جدید
 
 let hasLoadedTrending = false; 
 let selectedFile = null;
@@ -49,17 +50,23 @@ tabBtns.forEach(btn => {
             panels[key].classList.toggle('active', key === target);
         });
 
+        // اگر روی تب پیشنهاد امروز کلیک شد
         if (target === 'trending' && !hasLoadedTrending) {
-            loadTrending();
+            loadTrending('all');
         }
     });
 });
 
-// ================= 🎬 بخش پیشنهاد امروز (TMDB) =================
+// تغییر ژانر
+genreSelect.addEventListener('change', (e) => {
+    loadTrending(e.target.value);
+});
+
+// ================= 🎬 بخش پیشنهاد امروز (TMDB با فیلتر ژانر) =================
 
 async function fetchTMDB(endpoint) {
     try {
-        const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}&language=fa-IR&page=1`);
+        const res = await fetch(`https://api.themoviedb.org/3/${endpoint}&api_key=${TMDB_API_KEY}&language=fa-IR&page=1`);
         const data = await res.json();
         return data.results || [];
     } catch (e) {
@@ -67,31 +74,45 @@ async function fetchTMDB(endpoint) {
     }
 }
 
-async function loadTrending() {
+async function loadTrending(genreId = 'all') {
     trendingList.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
     
-    const [trending, upcoming, tvShows] = await Promise.all([
-        fetchTMDB('trending/all/day'),
-        fetchTMDB('movie/upcoming'),
-        fetchTMDB('tv/popular')
-    ]);
+    let results = [];
 
-    const combined = [...trending, ...upcoming, ...tvShows].filter(item => item.media_type !== 'person');
-    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values()).slice(0, 30); 
+    if (genreId === 'all') {
+        // اگر همه ژانرها انتخاب شده بود، از محبوب‌ترین‌ها و جدیدترین‌ها استفاده کن
+        const [trending, upcoming, tvShows] = await Promise.all([
+            fetchTMDB('trending/all/day?'),
+            fetchTMDB('movie/upcoming?'),
+            fetchTMDB('tv/popular?')
+        ]);
+        const combined = [...trending, ...upcoming, ...tvShows].filter(item => item.media_type !== 'person');
+        results = Array.from(new Map(combined.map(item => [item.id, item])).values()).slice(0, 30);
+    } else {
+        // اگر ژانر خاصی انتخاب شده بود، از دیتابیس Discover استفاده کن
+        const [movies, tvShows] = await Promise.all([
+            fetchTMDB(`discover/movie?with_genres=${genreId}&sort_by=popularity.desc&`),
+            fetchTMDB(`discover/tv?with_genres=${genreId}&sort_by=popularity.desc&`)
+        ]);
+        const combined = [...movies, ...tvShows];
+        results = Array.from(new Map(combined.map(item => [item.id, item])).values())
+                      .sort((a, b) => b.popularity - a.popularity)
+                      .slice(0, 30);
+    }
 
-    if (unique.length === 0) {
-        trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات از TMDB.</p>';
+    if (results.length === 0) {
+        trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات برای این ژانر.</p>';
         return;
     }
 
     hasLoadedTrending = true;
-    trendingList.innerHTML = unique.map(m => {
+    trendingList.innerHTML = results.map(m => {
         const title = m.title || m.name || 'بدون نام';
         const originalTitle = m.original_title || m.original_name || '';
         const year = (m.release_date || m.first_air_date || '').split('-')[0] || '---';
         const poster = m.poster_path ? `https://image.tmdb.org/t/p/w200${m.poster_path}` : '';
         const rating = m.vote_average ? m.vote_average.toFixed(1) : '0.0';
-        const type = m.media_type === 'tv' ? 'سریال' : 'فیلم';
+        const type = m.media_type === 'tv' || m.first_air_date ? 'سریال' : 'فیلم';
         
         const link = `https://www.google.com/search?q=${encodeURIComponent(title + ' ' + year + ' movie')}`;
 
@@ -116,7 +137,8 @@ async function loadTrending() {
     }).join('');
 }
 
-// ================= 📝 جستجوی متنی =================
+// ================= بقیه کدها (جستجوی متنی، ویدیویی و...) دقیقاً مثل قبل بدون تغییر است =================
+
 btnText.addEventListener('click', async () => {
     const text = storyInput.value.trim();
     if (text.length < 10) return alert('لطفاً توضیحات بیشتری بنویسید.');
@@ -144,27 +166,22 @@ btnText.addEventListener('click', async () => {
     }
 });
 
-// ================= 📹 جستجوی ویدیویی =================
 btnVideo.addEventListener('click', async () => {
     const instaUrl = instaLinkInput.value.trim();
-    
-    if (!selectedFile && !instaUrl) {
-        return alert('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
-    }
+    if (!selectedFile && !instaUrl) return alert('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
     
     showLoader(true);
     startProgress();
     
     try {
         let frames = [];
-        
         if (instaUrl) {
             loaderText.textContent = 'در حال دریافت اطلاعات از اینستاگرام...';
             const videoUrl = await getInstagramVideoUrl(instaUrl);
-            loaderText.textContent = 'در حال استخراج فریم‌ها از لینک...';
+            loaderText.textContent = 'در حال استخراج فریم‌ها...';
             frames = await extractFrames(videoUrl);
         } else if (selectedFile) {
-            loaderText.textContent = 'در حال استخراج فریم‌ها از فایل...';
+            loaderText.textContent = 'در حال استخراج فریم‌ها...';
             frames = await extractFrames(selectedFile);
         }
         
@@ -194,8 +211,6 @@ btnVideo.addEventListener('click', async () => {
         }, 400);
     }
 });
-
-// ================= توابع کمکی =================
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
