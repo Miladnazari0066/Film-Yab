@@ -8,12 +8,17 @@ const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FRAME_COUNT = 4; 
 const FRAME_WIDTH = 400;
 const OMDB_API_KEY = 'b44a4ca6';
+const TMDB_API_KEY = '0d6b2e67010cce1ffb27d958cb1bc152'; // 🔑 کلید TMDB
 
 const $ = id => document.getElementById(id);
 
 // المان‌ها
 const tabBtns = document.querySelectorAll('.tab-btn');
-const panels = { text: $('panel-text'), video: $('panel-video') };
+const panels = { 
+    text: $('panel-text'), 
+    video: $('panel-video'),
+    trending: $('panel-trending')
+};
 const storyInput = $('story');
 const dropzone = $('dropzone');
 const fileInput = $('file-input');
@@ -29,6 +34,10 @@ const progressBar = $('progress-bar');
 const progressText = $('progress-text');
 const modalOverlay = $('result-modal');
 const modalBody = $('modal-body');
+const trendingList = $('trending-list');
+
+let hasLoadedTrending = false; 
+let selectedFile = null;
 
 // مدیریت تب‌ها
 tabBtns.forEach(btn => {
@@ -39,10 +48,157 @@ tabBtns.forEach(btn => {
         Object.keys(panels).forEach(key => {
             panels[key].classList.toggle('active', key === target);
         });
+
+        // اگر روی تب پیشنهاد امروز کلیک شد و قبلا لود نشده بود
+        if (target === 'trending' && !hasLoadedTrending) {
+            loadTrending();
+        }
     });
 });
 
-let selectedFile = null;
+// ================= 🎬 بخش پیشنهاد امروز (TMDB) =================
+
+async function fetchTMDB(endpoint) {
+    try {
+        const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_API_KEY}&language=fa-IR&page=1`);
+        const data = await res.json();
+        return data.results || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+async function loadTrending() {
+    trendingList.innerHTML = '<div style="text-align:center; padding: 20px;"><div class="spinner" style="margin: 0 auto;"></div></div>';
+    
+    // گرفتن ۳ لیست مختلف
+    const [trending, upcoming, tvShows] = await Promise.all([
+        fetchTMDB('trending/all/day'),
+        fetchTMDB('movie/upcoming'),
+        fetchTMDB('tv/popular')
+    ]);
+
+    // ترکیب، حذف تکراری‌ها و فیلتر کردن اشخاص
+    const combined = [...trending, ...upcoming, ...tvShows].filter(item => item.media_type !== 'person');
+    const unique = Array.from(new Map(combined.map(item => [item.id, item])).values()).slice(0, 30); 
+
+    if (unique.length === 0) {
+        trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات از TMDB.</p>';
+        return;
+    }
+
+    hasLoadedTrending = true;
+    trendingList.innerHTML = unique.map(m => {
+        const title = m.title || m.name || 'بدون نام';
+        const originalTitle = m.original_title || m.original_name || '';
+        const year = (m.release_date || m.first_air_date || '').split('-')[0] || '---';
+        const poster = m.poster_path ? `https://image.tmdb.org/t/p/w200${m.poster_path}` : '';
+        const rating = m.vote_average ? m.vote_average.toFixed(1) : '0.0';
+        const type = m.media_type === 'tv' ? 'سریال' : 'فیلم';
+        
+        const link = `https://www.google.com/search?q=${encodeURIComponent(title + ' ' + year + ' movie')}`;
+
+        return `
+            <a href="${link}" target="_blank" class="trending-item">
+                ${poster 
+                    ? `<img src="${poster}" class="trending-poster" alt="${title}" loading="lazy">` 
+                    : `<div class="trending-poster" style="display:flex; align-items:center; justify-content:center; font-size:20px;">🎬</div>`
+                }
+                <div class="trending-info">
+                    <div class="trending-title">${title}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 5px;" dir="ltr">${originalTitle}</div>
+                    <div class="trending-meta">
+                        <span>📅 ${year}</span>
+                        <span style="color:#f5c518;">⭐ ${rating}</span>
+                        <span>🎬 ${type}</span>
+                    </div>
+                </div>
+                <div style="color: var(--secondary-glow); font-size: 1.5rem; padding-left: 10px;">←</div>
+            </a>
+        `;
+    }).join('');
+}
+
+// ================= 📝 جستجوی متنی =================
+btnText.addEventListener('click', async () => {
+    const text = storyInput.value.trim();
+    if (text.length < 10) return alert('لطفاً توضیحات بیشتری بنویسید.');
+
+    showLoader(true);
+    startProgress();
+
+    try {
+        const prompt = buildPrompt(text, false);
+        const rawResponse = await callOpenRouter([{ type: "text", text: prompt }], false);
+        const parsedData = parseJson(rawResponse);
+        
+        finishProgress();
+        setTimeout(async () => {
+            showLoader(false);
+            await showResult(parsedData);
+        }, 400);
+
+    } catch (err) {
+        finishProgress();
+        setTimeout(() => {
+            showLoader(false);
+            alert("خطای جستجو:\n" + err.message);
+        }, 400);
+    }
+});
+
+// ================= 📹 جستجوی ویدیویی =================
+btnVideo.addEventListener('click', async () => {
+    const instaUrl = instaLinkInput.value.trim();
+    
+    if (!selectedFile && !instaUrl) {
+        return alert('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
+    }
+    
+    showLoader(true);
+    startProgress();
+    
+    try {
+        let frames = [];
+        
+        if (instaUrl) {
+            loaderText.textContent = 'در حال دریافت اطلاعات از اینستاگرام...';
+            const videoUrl = await getInstagramVideoUrl(instaUrl);
+            loaderText.textContent = 'در حال استخراج فریم‌ها از لینک...';
+            frames = await extractFrames(videoUrl);
+        } else if (selectedFile) {
+            loaderText.textContent = 'در حال استخراج فریم‌ها از فایل...';
+            frames = await extractFrames(selectedFile);
+        }
+        
+        if (!frames || frames.length === 0) throw new Error("استخراج عکس ناموفق بود.");
+
+        const caption = captionInput.value.trim() || '';
+        const prompt = buildPrompt(caption, true);
+        
+        const content = [{ type: "text", text: prompt }];
+        frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
+
+        loaderText.textContent = 'در حال تحلیل تصاویر...';
+        const rawResponse = await callOpenRouter(content, true);
+        const parsedData = parseJson(rawResponse);
+        
+        finishProgress();
+        setTimeout(async () => {
+            showLoader(false);
+            await showResult(parsedData);
+        }, 400);
+
+    } catch (err) {
+        finishProgress();
+        setTimeout(() => {
+            showLoader(false);
+            alert("خطای تحلیل:\n" + err.message);
+        }, 400);
+    }
+});
+
+// ================= توابع کمکی =================
 
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = 'var(--secondary-glow)'; });
@@ -114,14 +270,19 @@ async function extractFrames(source, count = FRAME_COUNT) {
 }
 
 async function getInstagramVideoUrl(instaUrl) {
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(instaUrl)}`;
+    const workerBase = 'https://in.seetectools.workers.dev'; 
     try {
-        const res = await fetch(proxyUrl);
-        const html = await res.text();
-        const match = html.match(/<meta property="og:video" content="([^"]+)"/) || html.match(/"video_url":"([^"]+)"/);
-        if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
-    } catch (e) { throw new Error("عدم دسترسی به اینستاگرام"); }
-    throw new Error("ویدیو در این لینک پیدا نشد.");
+        const res = await fetch(`${workerBase}?url=${encodeURIComponent(instaUrl)}`);
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch (e) { throw new Error("پاسخ نامعتبر از سرور"); }
+
+        if (data.error) throw new Error(data.error);
+        if (data.videoUrl) return data.videoUrl;
+        throw new Error('ویدیویی یافت نشد.');
+    } catch (error) {
+        throw new Error(`دریافت ویدیو ممکن نشد: ${error.message}`);
+    }
 }
 
 function buildPrompt(text, isVideo) {
@@ -137,7 +298,6 @@ function buildPrompt(text, isVideo) {
     } else {
         return `تو یک کارشناس دقیق سینما هستی. کاربر داستان یک فیلم یا سریال را تعریف کرده است: "${text}"
 بهترین و معروف‌ترین فیلم یا سریالی که دقیقاً با این داستان مطابقت دارد را پیدا کن.
-(مثلاً برای بازی‌های مرگبار و جایزه نقدی، سریال Squid Game را در نظر بگیر).
 خروجی فقط JSON خالص:
 {
   "title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع",
@@ -147,7 +307,6 @@ function buildPrompt(text, isVideo) {
     }
 }
 
-// ⏱️ تایم‌اوت کاهش پیدا کرد به ۴ ثانیه برای سرعت بالا
 async function fetchWithTimeout(resource, options = {}) {
     const { timeout = 4000 } = options; 
     const controller = new AbortController();
@@ -185,7 +344,7 @@ async function callOpenRouter(content, isVideoMode = false) {
                         'X-Title': 'Film-Yab'
                     },
                     body: JSON.stringify({ model: model, messages: [{ role: 'user', content: content }], temperature: 0.0 }),
-                    timeout: 4000 // حداکثر ۴ ثانیه صبر میکنه
+                    timeout: 4000
                 });
 
                 if (!res.ok) {
@@ -205,87 +364,8 @@ async function callOpenRouter(content, isVideoMode = false) {
             }
         }
     }
-    throw new Error(`مدل‌ها پاسخ ندادند. دلیل آخرین خطا: ${errorLogs[0] || 'نامشخص'}`);
+    throw new Error(`مدل‌ها پاسخ ندادند. دلیل: ${errorLogs[0] || 'نامشخص'}`);
 }
-
-// جستجوی متنی
-btnText.addEventListener('click', async () => {
-    const text = storyInput.value.trim();
-    if (text.length < 10) return alert('لطفاً توضیحات بیشتری بنویسید.');
-
-    showLoader(true);
-    startProgress();
-
-    try {
-        const prompt = buildPrompt(text, false);
-        const rawResponse = await callOpenRouter([{ type: "text", text: prompt }], false);
-        const parsedData = parseJson(rawResponse);
-        
-        finishProgress();
-        setTimeout(async () => {
-            showLoader(false);
-            await showResult(parsedData);
-        }, 400);
-
-    } catch (err) {
-        finishProgress();
-        setTimeout(() => {
-            showLoader(false);
-            alert("خطای جستجو:\n" + err.message);
-        }, 400);
-    }
-});
-
-// جستجوی ویدیویی
-btnVideo.addEventListener('click', async () => {
-    const instaUrl = instaLinkInput.value.trim();
-    
-    if (!selectedFile && !instaUrl) {
-        return alert('لطفاً یک فایل ویدیو انتخاب کنید یا لینک اینستاگرام را وارد کنید.');
-    }
-    
-    showLoader(true);
-    startProgress();
-    
-    try {
-        let frames = [];
-        
-        if (instaUrl) {
-            loaderText.textContent = 'در حال دریافت اطلاعات از اینستاگرام...';
-            const videoUrl = await getInstagramVideoUrl(instaUrl);
-            loaderText.textContent = 'در حال استخراج فریم‌ها از لینک...';
-            frames = await extractFrames(videoUrl);
-        } else if (selectedFile) {
-            loaderText.textContent = 'در حال استخراج فریم‌ها از فایل...';
-            frames = await extractFrames(selectedFile);
-        }
-        
-        if (!frames || frames.length === 0) throw new Error("استخراج عکس ناموفق بود.");
-
-        const caption = captionInput.value.trim() || '';
-        const prompt = buildPrompt(caption, true);
-        
-        const content = [{ type: "text", text: prompt }];
-        frames.forEach(frame => content.push({ type: "image_url", image_url: { url: frame } }));
-
-        loaderText.textContent = 'در حال تحلیل تصاویر...';
-        const rawResponse = await callOpenRouter(content, true);
-        const parsedData = parseJson(rawResponse);
-        
-        finishProgress();
-        setTimeout(async () => {
-            showLoader(false);
-            await showResult(parsedData);
-        }, 400);
-
-    } catch (err) {
-        finishProgress();
-        setTimeout(() => {
-            showLoader(false);
-            alert("خطای تحلیل:\n" + err.message);
-        }, 400);
-    }
-});
 
 function showLoader(show) {
     loader.style.display = show ? 'block' : 'none';
@@ -324,15 +404,12 @@ function finishProgress() {
     progressText.textContent = '100%';
 }
 
-// بستن پاپ‌آپ
 function closeModal() {
     modalOverlay.classList.remove('active');
     setTimeout(() => { modalBody.innerHTML = ''; }, 300);
 }
-// اتصال تابع بستن به دکمه ضربدر در HTML
 window.closeModal = closeModal; 
 
-// بستن پاپ‌آپ با کلیک بیرون از آن
 modalOverlay.addEventListener('click', (e) => {
     if (e.target === modalOverlay) closeModal();
 });
@@ -355,7 +432,6 @@ function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 }
 
-// گرفتن پوستر از OMDb (با محدودیت زمانی ۳ ثانیه تا سایت قفل نکنه)
 async function fetchOMDbData(imdbID, titleEn, year) {
     if (!OMDB_API_KEY) return { poster: null, rating: null };
     try {
@@ -367,7 +443,6 @@ async function fetchOMDbData(imdbID, titleEn, year) {
             if (year && !isNaN(year)) url += `&y=${year}`;
         }
         
-        // محدودیت زمانی برای OMDb
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000); 
         
@@ -381,13 +456,10 @@ async function fetchOMDbData(imdbID, titleEn, year) {
                 rating: data.imdbRating !== 'N/A' ? data.imdbRating : null
             };
         }
-    } catch (e) {
-        console.warn('OMDb پاسخ نداد یا تایم‌اوت شد.');
-    }
+    } catch (e) {}
     return { poster: null, rating: null };
 }
 
-// نمایش نتیجه در پاپ‌آپ
 async function showResult(data) {
     if (!data) return alert('داده‌ای یافت نشد.');
     
@@ -403,7 +475,6 @@ async function showResult(data) {
     const explanation = escapeHtml(data.explanation || 'توضیحی یافت نشد.');
     const imdbID = data.imdbID || '';
     
-    // گرفتن پوستر
     const omdbData = await fetchOMDbData(imdbID, data.title_en, data.year);
     
     let posterHtml = omdbData.poster 
@@ -428,7 +499,6 @@ async function showResult(data) {
         </div>`;
     }
 
-    // تزریق HTML به داخل پاپ‌آپ
     modalBody.innerHTML = `
         <div class="result-card">
             ${posterHtml}
@@ -451,6 +521,5 @@ async function showResult(data) {
         </div>
     `;
 
-    // باز کردن پاپ‌آپ با انیمیشن
     modalOverlay.classList.add('active');
 }
