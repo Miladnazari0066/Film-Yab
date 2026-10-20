@@ -1,5 +1,5 @@
-// 🔑 کلیدهای API (به جای ورکر، مستقیم اینجا هستند)
-const OPENROUTER_KEY = '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'; // کلید DeepSeek (این را با کلید جدید عوض کن)
+// 🔑 کلیدهای API
+const OPENROUTER_KEY = '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'; 
 const TMDB_KEY = '0d6b2e67010cce1ffb27d958cb1bc152';
 const OMDB_KEY = 'b44a4ca6';
 
@@ -59,7 +59,6 @@ function showSkeletons(container) {
 
 async function fetchTMDB(endpoint) {
     try {
-        // درخواست مستقیم به TMDB
         const res = await fetch(`https://api.themoviedb.org/3/${endpoint}?api_key=${TMDB_KEY}&language=fa-IR&page=1`);
         const data = await res.json();
         return data.results || [];
@@ -87,7 +86,7 @@ async function loadTrending(genreId = 'all') {
                       .sort((a, b) => b.popularity - a.popularity).slice(0, 30);
     }
 
-    if (results.length === 0) { trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات.</p>'; return; }
+    if (results.length === 0) { trendingList.innerHTML = '<p style="text-align:center; color:#ef4444;">خطا در دریافت اطلاعات. اینترنت یا API را چک کنید.</p>'; return; }
     hasLoadedTrending = true;
 
     trendingList.innerHTML = results.map(m => {
@@ -160,7 +159,7 @@ btnText.addEventListener('click', async () => {
         const parsedData = parseJson(rawResponse);
         finishProgress();
         setTimeout(async () => { showLoader(false); await showResult(parsedData); }, 400);
-    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا:\n" + err.message); }, 400); }
+    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا در جستجو:\n" + err.message); }, 400); }
 });
 
 btnVideo.addEventListener('click', async () => {
@@ -188,14 +187,15 @@ btnVideo.addEventListener('click', async () => {
         
         finishProgress();
         setTimeout(async () => { showLoader(false); await showResult(parsedData); }, 400);
-    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا:\n" + err.message); }, 400); }
+    } catch (err) { finishProgress(); setTimeout(() => { showLoader(false); alert("خطا در تحلیل:\n" + err.message); }, 400); }
 });
 
-// دریافت لینک اینستاگرام با پروکسی
+// دریافت لینک اینستاگرام با پروکسی‌های جایگزین
 async function getInstagramVideoUrl(instaUrl) {
     const proxies = [
         `https://corsproxy.io/?${encodeURIComponent(instaUrl)}`,
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(instaUrl)}`
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(instaUrl)}`,
+        `https://thingproxy.freeboard.io/fetch/${instaUrl}`
     ];
     
     for (const proxyUrl of proxies) {
@@ -206,10 +206,10 @@ async function getInstagramVideoUrl(instaUrl) {
             if (match && match[1]) return match[1].replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
         } catch (e) { console.warn("پروکسی خطا داد:", e); }
     }
-    throw new Error("نتوانستم ویدیو را از لینک اینستاگرام دریافت کنم.");
+    throw new Error("نتوانستم ویدیو را دریافت کنم. لینک را بررسی کنید یا از فایل استفاده کنید.");
 }
 
-// ================= بخش «کجا ببینم» (Watch Providers) =================
+// ================= بخش «کجا ببینم» =================
 async function fetchWatchProviders(titleEn, year) {
     try {
         const searchRes = await fetch(`https://api.themoviedb.org/3/search/movie?api_key=${TMDB_KEY}&query=${encodeURIComponent(titleEn)}&year=${year}`);
@@ -224,7 +224,7 @@ async function fetchWatchProviders(titleEn, year) {
         const regionData = providerData.results?.US || providerData.results?.IR;
         if (!regionData) return null;
 
-        const providers = regionData.flatrate || regionData.rent || regionData.buy || [];
+        const providers = regionData.flatrate || regionData.rent || providerData.results?.US?.buy || [];
         return providers.length > 0 ? providers : null;
     } catch (e) { return null; }
 }
@@ -236,7 +236,6 @@ async function showResult(data) {
     let rawTitleFa = data.title_fa || 'نامشخص';
     rawTitleFa = rawTitleFa.replace(/پیکینگ باد/gi, 'بریکینگ بد').replace(/برکینگ باد/gi, 'بریکینگ بد');
     
-    // دریافت اطلاعات از OMDb
     let omdbData = { poster: null, rating: null };
     try {
         const omdbRes = await fetch(`https://www.omdbapi.com/?apikey=${OMDB_KEY}&${data.imdbID ? 'i='+data.imdbID : 't='+encodeURIComponent(data.title_en)}`);
@@ -247,7 +246,6 @@ async function showResult(data) {
         }
     } catch(e) {}
 
-    // دریافت پلتفرم‌های پخش
     const watchProviders = await fetchWatchProviders(data.title_en, data.year);
 
     currentMovieData = {
@@ -345,26 +343,54 @@ function buildPrompt(text, isVideo) {
     return `داستان: "${text}". بهترین فیلم را پیدا کن. خروجی JSON: {"title_fa": "نام", "title_en": "Name", "year": "سال", "type": "نوع", "imdbID": "شناسه", "confidence": "درصد", "explanation": "توضیح"}`;
 }
 
-// درخواست مستقیم به OpenRouter
+// درخواست مستقیم به OpenRouter با مدیریت خطای دقیق
 async function callOpenRouter(content, isVideoMode = false) {
     const model = isVideoMode ? "qwen/qwen2.5-vl-72b-instruct:free" : "deepseek/deepseek-chat";
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: 'POST', 
-        headers: {
-            'Authorization': `Bearer ${OPENROUTER_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': location.origin,
-            'X-Title': 'Film-Yab'
-        },
-        body: JSON.stringify({ model: model, messages: [{ role: 'user', content }], temperature: 0.0 })
-    });
-    const data = await res.json();
-    if (data.choices && data.choices.length > 0) return data.choices[0].message.content;
-    if (data.error) throw new Error(data.error.message || data.error);
-    throw new Error("پاسخی دریافت نشد.");
+    
+    try {
+        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: 'POST', 
+            headers: {
+                'Authorization': `Bearer ${OPENROUTER_KEY}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': window.location.href,
+                'X-Title': 'Film-Yab'
+            },
+            body: JSON.stringify({ model: model, messages: [{ role: 'user', content }], temperature: 0.0 })
+        });
+        
+        const data = await res.json();
+        if (data.choices && data.choices.length > 0) return data.choices[0].message.content;
+        if (data.error) throw new Error(data.error.message || "خطای کلید API");
+        
+        throw new Error("پاسخ خالی از سمت سرور");
+    } catch (err) {
+        console.error("OpenRouter Error:", err);
+        throw new Error("ارتباط با هوش مصنوعی برقرار نشد. لطفاً از فیلترشکن استفاده کنید یا کلید API را بررسی کنید.");
+    }
 }
 
-function showLoader(show) { loader.style.display = show ? 'block' : 'none'; }
+// 🌟 انیمیشن تایپ برای لودر 🌟
+const loadingMessages = ['در حال تحلیل...', 'جستجو در آرشیو...', 'در حال استخراج اطلاعات...', 'تقریبا آماده است...'];
+let loadingInterval;
+let typingInterval;
+
+function showLoader(show) {
+    loader.style.display = show ? 'block' : 'none';
+    if (show) {
+        let msgIndex = 0;
+        loaderText.textContent = loadingMessages[0];
+        
+        // تغییر متن هر ۳ ثانیه
+        loadingInterval = setInterval(() => {
+            msgIndex = (msgIndex + 1) % loadingMessages.length;
+            loaderText.textContent = loadingMessages[msgIndex];
+        }, 3000);
+    } else {
+        clearInterval(loadingInterval);
+    }
+}
+
 let progressInterval; let currentProgress = 0;
 function startProgress() {
     clearInterval(progressInterval); currentProgress = 0; progressBar.style.width = '0%';
@@ -373,4 +399,12 @@ function startProgress() {
     }, 150);
 }
 function finishProgress() { clearInterval(progressInterval); progressBar.style.width = '100%'; }
-function parseJson(raw) { return JSON.parse(raw.replace(/```json/g, '').replace(/```/g, '').trim()); }
+function parseJson(raw) { 
+    try {
+        return JSON.parse(raw.replace(/```json/g, '').replace(/```/g, '').trim()); 
+    } catch(e) {
+        const match = raw.match(/\{[\s\S]*\}/);
+        if(match) return JSON.parse(match[0]);
+        throw new Error("پاسخ JSON نامعتبر بود.");
+    }
+}
